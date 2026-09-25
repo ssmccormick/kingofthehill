@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>King of the Hill — prototype</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <strong>King of the Hill</strong>
+    <span class="hud" id="hud"></span>
+  </header>
+  <main>
+    <section id="boardWrap">
+      <canvas id="board"></canvas>
+    </section>
+    <aside id="side">
+      <div class="buttons">
+        <button id="btnEndTurn" title="Enter">End Turn</button>
+        <button id="btnUndo" title="Z / Ctrl+Z">Undo</button>
+        <button id="btnRestart" title="Same seed">Restart</button>
+        <button id="btnNewSeed">New Seed</button>
+      </div>
+      <div class="buttons small">
+        <button id="btnZoomOut">−</button>
+        <button id="btnZoomIn">+</button>
+        <label><input type="checkbox" id="chkThreat"> Threat overlay</label>
+      </div>
+      <div id="banner" class="banner" hidden></div>
+      <div id="selection" class="panel"></div>
+      <div id="hoverInfo" class="panel muted"></div>
+      <details open class="panel">
+        <summary>Turn log</summary>
+        <ol id="log"></ol>
+      </details>
+      <details class="panel" id="dev">
+        <summary>Dev panel</summary>
+        <div class="devgrid">
+          <label>Board size <input type="number" id="devBoard" min="12" max="40"></label>
+          <label>Plateau size <input type="number" id="devPlateau" min="4" max="16"></label>
+          <label>Summit size <input type="number" id="devSummit" min="1" max="4"></label>
+          <label>Ramp width <input type="number" id="devRamp" min="1" max="6"></label>
+          <label>Deploy ring <input type="number" id="devRing" min="1" max="4"></label>
+          <label>AP / turn <input type="number" id="devAP" min="1" max="12"></label>
+          <label class="wide"><input type="checkbox" id="devRepeat"> Allow repeat moves by one piece</label>
+        </div>
+        <button id="devApply">Apply &amp; restart</button>
+        <button id="devReset">Reset to defaults</button>
+        <hr>
+        <label>Click tool
+          <select id="devTool">
+            <option value="">— play normally —</option>
+            <optgroup label="Place enemy">
+              <option value="enemy:P">Enemy pawn</option>
+              <option value="enemy:N">Enemy knight</option>
+              <option value="enemy:B">Enemy bishop</option>
+              <option value="enemy:R">Enemy rook</option>
+              <option value="enemy:Q">Enemy queen</option>
+              <option value="enemy:K">Enemy king</option>
+            </optgroup>
+            <optgroup label="Place player">
+              <option value="player:P">Player pawn</option>
+              <option value="player:N">Player knight</option>
+              <option value="player:B">Player bishop</option>
+              <option value="player:R">Player rook</option>
+              <option value="player:Q">Player queen</option>
+            </optgroup>
+            <option value="erase">Erase piece</option>
+          </select>
+        </label>
+        <label>Pawn facing
+          <select id="devFacing">
+            <option value="auto">auto</option>
+            <option value="N">N</option><option value="E">E</option><option value="S">S</option><option value="W">W</option>
+          </select>
+        </label>
+        <button id="devClearEnemies">Clear enemies</button>
+        <button id="devRefreshTurn">Refresh AP &amp; moves</button>
+        <p class="muted">Auto facing: enemy pawns face inward from the nearest edge, player pawns face outward toward it.</p>
+      </details>
+      <details class="panel">
+        <summary>Legend &amp; keys</summary>
+        <ul class="legend">
+          <li><span class="sw l0"></span> ground (level 0) <span class="sw l1"></span> plateau (1) <span class="sw l2"></span> summit (2)</li>
+          <li><b>Thick dark line</b> = cliff (no climbing). Chevrons = ramp (uphill direction).</li>
+          <li><b>Blue dashed outline</b> = deployment zone.</li>
+          <li>Pawn badge = captures; small tick = facing. Hover a pawn to see its promotion.</li>
+          <li>Faded piece = already acted this turn. ↻ = can Redeploy.</li>
+          <li>Keys: Enter end turn · Z undo · Esc cancel</li>
+        </ul>
+      </details>
+    </aside>
+  </main>
+  <div id="tooltip" hidden></div>
+  <script type="module" src="src/ui/main.js"></script>
+</body>
+</html>

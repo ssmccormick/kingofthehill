@@ -1,0 +1,11 @@
+{
+  "name": "kingofthehill",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Chess survival prototype: defend the king on the hill.",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "serve": "node serve.js"
+  }
+}
