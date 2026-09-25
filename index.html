@@ -25,10 +25,15 @@
       <div class="buttons small">
         <button id="btnZoomOut">−</button>
         <button id="btnZoomIn">+</button>
+        <label><input type="checkbox" id="chkIntents" checked> Enemy intents</label>
         <label><input type="checkbox" id="chkThreat"> Threat overlay</label>
       </div>
       <div id="banner" class="banner" hidden></div>
       <div id="selection" class="panel"></div>
+      <div class="panel">
+        <div class="panel-title">Enemy intents <span class="muted">(they move when you end the turn)</span></div>
+        <ol id="intents"></ol>
+      </div>
       <div id="hoverInfo" class="panel muted"></div>
       <details open class="panel">
         <summary>Turn log</summary>
@@ -41,8 +46,9 @@
           <label>Plateau size <input type="number" id="devPlateau" min="4" max="16"></label>
           <label>Summit size <input type="number" id="devSummit" min="1" max="4"></label>
           <label>Ramp width <input type="number" id="devRamp" min="1" max="6"></label>
-          <label>Deploy ring <input type="number" id="devRing" min="1" max="4"></label>
+          <label>Climb extra cost <input type="number" id="devClimb" min="0" max="3"></label>
           <label>AP / turn <input type="number" id="devAP" min="1" max="12"></label>
+          <label>Enemies / turn <input type="number" id="devEPT" min="0" max="20"></label>
           <label class="wide"><input type="checkbox" id="devRepeat"> Allow repeat moves by one piece</label>
         </div>
         <button id="devApply">Apply &amp; restart</button>
@@ -75,6 +81,9 @@
             <option value="N">N</option><option value="E">E</option><option value="S">S</option><option value="W">W</option>
           </select>
         </label>
+        <label><input type="checkbox" id="devAI"> Enemy AI enabled (off = enemies never move)</label>
+        <button id="devSpawn">Spawn 8 random enemies</button>
+        <button id="devReplan">Re-plan intents</button>
         <button id="devClearEnemies">Clear enemies</button>
         <button id="devRefreshTurn">Refresh AP &amp; moves</button>
         <p class="muted">Auto facing: enemy pawns face inward from the nearest edge, player pawns face outward toward it.</p>
@@ -83,8 +92,9 @@
         <summary>Legend &amp; keys</summary>
         <ul class="legend">
           <li><span class="sw l0"></span> ground (level 0) <span class="sw l1"></span> plateau (1) <span class="sw l2"></span> summit (2)</li>
-          <li><b>Thick dark line</b> = cliff (no climbing). Chevrons = ramp (uphill direction).</li>
-          <li><b>Blue dashed outline</b> = deployment zone.</li>
+          <li><b>Thick dark line</b> = step up: costs 1 extra movement, so kings, knights and pawns can't climb it. Chevrons = ramp (free climb, points uphill).</li>
+          <li><b>Blue dashed outline</b> = deployment zone (the hill's base).</li>
+          <li>Enemy intents: numbered arrows in execution order. Red = capture, orange = move, grey dashed = no longer valid (the enemy will pick another move). Purple + = gives check, black # = checkmate.</li>
           <li>Pawn badge = captures; small tick = facing. Hover a pawn to see its promotion.</li>
           <li>Faded piece = already acted this turn. ↻ = can Redeploy.</li>
           <li>Keys: Enter end turn · Z undo · Esc cancel</li>

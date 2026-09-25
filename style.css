@@ -37,3 +37,8 @@ input, select { background: #1b1e22; color: var(--text); border: 1px solid #555;
 #tooltip { position: fixed; pointer-events: none; background: #111; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; border: 1px solid #555; z-index: 10; }
 .sel-title { font-weight: 600; font-size: 15px; }
 .warn { color: var(--accent); }
+#intents { margin: 6px 0 0; padding-left: 0; list-style: none; font-size: 12px; }
+#intents li { padding: 2px 0; display: flex; gap: 6px; align-items: baseline; }
+#intents .n { display: inline-block; min-width: 18px; height: 18px; border-radius: 9px; text-align: center; color: #fff; font-weight: 700; line-height: 18px; }
+#intents .n.move { background: #f77f00; } #intents .n.hit { background: #d62828; } #intents .n.invalid { background: #8d99ae; } #intents .n.dead { background: #444; }
+.panel-title { font-weight: 600; }

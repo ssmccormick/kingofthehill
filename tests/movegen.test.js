@@ -24,11 +24,11 @@ test('bishop on flat ground capped at 7 diagonally', () => {
 
 test('player slider gets +1 range per elevation level (plateau 8, summit 9)', () => {
   const s = emptyState();
-  const rook = put(s, 'R', 'player', 9, 9); // plateau
+  const rook = put(s, 'R', 'player', 10, 10); // plateau
   assert.equal(slideRange(s, rook), 8);
   const t = targets(s, pseudoMoves(s, rook));
-  assert.ok(t.includes('1,9'), 'slides 8 squares west, dropping off the cliff');
-  assert.ok(!t.includes('0,9'));
+  assert.ok(t.includes('2,10'), 'slides 8 squares west, stepping down off the hill');
+  assert.ok(!t.includes('1,10'));
   const q = put(s, 'Q', 'player', 12, 12); // summit
   assert.equal(slideRange(s, q), 9);
 });

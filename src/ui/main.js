@@ -3,19 +3,21 @@ import { DEFAULT_CONFIG, mergeConfig } from '../config.js';
 import { Game } from '../logic/game.js';
 import { addPiece, removePiece, PIECE_NAMES, xyOf } from '../logic/state.js';
 import { attackedSquares, isInCheck, slideRange } from '../logic/moves.js';
+import { intentStatus } from '../logic/ai.js';
 import { availableMoves, pieceBlockedReason, currentPlacementSquares, startPlayerTurn } from '../logic/actions.js';
 import { promotionPieceFor } from '../logic/promotion.js';
 import { inwardFacing, OPPOSITE } from '../logic/terrain.js';
 import { randomSeed } from '../logic/rng.js';
+import { spawnRandomEnemies } from '../logic/debug.js';
 import { render } from './render.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('board');
-const DEV_KEY = 'koth.devOverrides';
+const DEV_KEY = 'koth.devOverrides.v2';
 
 let overrides = loadOverrides();
 let game;
-const view = { cell: 28, selectedId: null, moves: [], hoverSq: -1, showThreat: false, tool: '', message: '' };
+const view = { cell: 28, selectedId: null, moves: [], hoverSq: -1, showThreat: false, showIntents: true, tool: '', message: '' };
 
 function loadOverrides() {
   try { return JSON.parse(localStorage.getItem(DEV_KEY)) || {}; } catch { return {}; }
@@ -165,6 +167,7 @@ $('btnNewSeed').onclick = () => newGame(randomSeed());
 $('btnZoomIn').onclick = () => { view.cell = Math.min(64, view.cell + 4); refresh(); };
 $('btnZoomOut').onclick = () => { view.cell = Math.max(12, view.cell - 4); refresh(); };
 $('chkThreat').onchange = (e) => { view.showThreat = e.target.checked; refresh(); };
+$('chkIntents').onchange = (e) => { view.showIntents = e.target.checked; refresh(); };
 
 // ---------- dev panel ----------
 function devClick(sq) {
@@ -191,8 +194,10 @@ function fillDevPanel() {
   $('devPlateau').value = c.board.plateauSize;
   $('devSummit').value = c.board.summitSize;
   $('devRamp').value = c.board.ramps[0]?.width ?? 2;
-  $('devRing').value = c.board.deployRingWidth;
+  $('devClimb').value = c.terrain.climbExtraCost;
   $('devAP').value = c.turn.apPerTurn;
+  $('devEPT').value = c.enemy.enemiesPerTurn;
+  $('devAI').checked = c.enemy.aiEnabled;
   $('devRepeat').checked = !c.turn.onePieceMovePerTurn;
 }
 
@@ -202,10 +207,11 @@ $('devApply').onclick = () => {
   overrides = {
     board: {
       width: n('devBoard'), height: n('devBoard'), plateauSize: n('devPlateau'), summitSize: n('devSummit'),
-      deployRingWidth: n('devRing'),
       ramps: ['N', 'E', 'S', 'W'].map((side) => ({ side, start: null, width: rampW })),
     },
+    terrain: { climbExtraCost: n('devClimb') },
     turn: { apPerTurn: n('devAP'), onePieceMovePerTurn: !$('devRepeat').checked },
+    enemy: { enemiesPerTurn: n('devEPT'), aiEnabled: $('devAI').checked },
   };
   saveOverrides();
   newGame(game.state.seed);
@@ -217,6 +223,22 @@ $('devReset').onclick = () => {
   newGame(game.state.seed);
 };
 $('devTool').onchange = (e) => { view.tool = e.target.value; clearSelection(); refresh(); };
+// AI toggle and enemies-per-turn apply immediately (no restart needed).
+$('devAI').onchange = (e) => {
+  overrides = { ...overrides, enemy: { ...(overrides.enemy || {}), aiEnabled: e.target.checked } };
+  saveOverrides();
+  game.debugEdit((st) => { st.config.enemy.aiEnabled = e.target.checked; });
+  refresh();
+};
+$('devEPT').onchange = (e) => {
+  const v = Math.max(0, Number(e.target.value) || 0);
+  overrides = { ...overrides, enemy: { ...(overrides.enemy || {}), enemiesPerTurn: v } };
+  saveOverrides();
+  game.debugEdit((st) => { st.config.enemy.enemiesPerTurn = v; });
+  refresh();
+};
+$('devSpawn').onclick = () => { game.debugEdit((st) => spawnRandomEnemies(st, 8)); refresh(); };
+$('devReplan').onclick = () => { game.debugEdit(() => {}); refresh(); };
 $('devClearEnemies').onclick = () => {
   game.debugEdit((st) => { for (const p of Object.values(st.pieces)) if (p.side === 'enemy') removePiece(st, p.id); });
   refresh();
@@ -239,6 +261,7 @@ function refresh() {
     moves: view.moves,
     hoverSq: view.hoverSq,
     threat: view.showThreat ? attackedSquares(s, 'enemy') : null,
+    intents: view.showIntents ? intentView(s) : null,
     placement: s.pendingPlacement ? currentPlacementSquares(s) : null,
   });
 
@@ -246,6 +269,7 @@ function refresh() {
   $('hud').innerHTML = [
     `<span class="ap">AP <b>${s.ap}</b></span>`,
     `<span>Turn <b>${s.turn}</b></span>`,
+    `<span>Enemies <b>${Object.values(s.pieces).filter((p) => p.side === 'enemy').length}</b></span>`,
     `<span>Wave <b>—</b></span>`,
     `<span>Mode <b>Sandbox</b></span>`,
     `<span>Seed <b>${s.seed}</b></span>`,
@@ -258,7 +282,7 @@ function refresh() {
   const banner = $('banner');
   let bannerText = '';
   banner.classList.remove('danger');
-  if (s.status === 'lost') { bannerText = 'Checkmate — game over. Restart or pick a new seed.'; banner.classList.add('danger'); }
+  if (s.status === 'lost') { bannerText = `${s.lossReason || 'Game over.'} Restart or pick a new seed.`; banner.classList.add('danger'); }
   else if (s.pendingPlacement) {
     const p = s.pieces[s.pendingPlacement.pieceId];
     bannerText = `Place your ${PIECE_NAMES[p.type]} on a highlighted deployment square${s.pendingPlacement.kind === 'redeploy' ? ' (Esc to cancel)' : ''}.`;
@@ -269,6 +293,7 @@ function refresh() {
   banner.textContent = bannerText;
 
   renderSelection();
+  renderIntents();
   renderHover();
   renderLog();
 }
@@ -307,6 +332,28 @@ function renderSelection() {
   }
 }
 
+function intentView(s) {
+  return (s.intents || []).map((intent) => ({ intent, status: intentStatus(s, intent) }));
+}
+
+function renderIntents() {
+  const s = game.state;
+  const el = $('intents');
+  if (!s.config.enemy.aiEnabled) { el.innerHTML = '<li class="muted">Enemy AI is off (dev panel).</li>'; return; }
+  if (!s.intents.length) { el.innerHTML = '<li class="muted">No enemy moves planned. Place enemies from the dev panel.</li>'; return; }
+  const note = { move: '', hit: ' — <b>will capture</b>', invalid: ' — <i>blocked, will pick another move</i>', dead: ' — cancelled (enemy captured)' };
+  el.innerHTML = intentView(s).map(({ intent, status }) => {
+    const p = s.pieces[intent.pieceId];
+    const name = p ? PIECE_NAMES[p.type] : 'Enemy';
+    const f = xyOf(s, intent.from), t = xyOf(s, intent.to);
+    let what = `${name} ${f.x},${f.y} → ${t.x},${t.y}`;
+    if (intent.captureType && status !== 'invalid') what += ` takes ${PIECE_NAMES[intent.captureType]}`;
+    if (intent.mate && status !== 'invalid') what += ' <b>CHECKMATE</b>';
+    else if (intent.check && status !== 'invalid') what += ' (check)';
+    return `<li><span class="n ${status}">${intent.order}</span><span>${what}${note[status]}</span></li>`;
+  }).join('');
+}
+
 function renderHover() {
   const s = game.state;
   const sq = view.hoverSq;
@@ -314,8 +361,7 @@ function renderHover() {
   const t = s.terrain;
   const { x, y } = xyOf(s, sq);
   const bits = [`${x},${y}`, `level ${t.elev[sq]}`];
-  if (t.rampSide[sq]) bits.push(`ramp (${t.rampSide[sq]})`);
-  if (t.summitAdj[sq]) bits.push('summit access');
+  if (t.rampSide[sq]) bits.push(`ramp (${t.rampSide[sq]}) — free climb`);
   if (t.deploy[sq]) bits.push('deployment zone');
   $('hoverInfo').textContent = bits.join(' · ');
 }

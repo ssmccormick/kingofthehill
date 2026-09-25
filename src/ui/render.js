@@ -8,8 +8,8 @@ const VS15 = '︎'; // force text (non-emoji) presentation
 
 const COLORS = {
   elev: [['#c9d4b0', '#c0cba6'], ['#dcc28f', '#d3b985'], ['#b98f58', '#b0864f']],
-  cliff: '#2b1d10',
-  step: '#7a5a30',
+  step: '#3a2612',
+  rampEdge: '#9c7a48',
   ramp: 'rgba(90,60,25,0.55)',
   deploy: 'rgba(40,95,170,0.85)',
   deployFill: 'rgba(40,95,170,0.07)',
@@ -20,6 +20,8 @@ const COLORS = {
   selected: '#ffd60a',
   placement: 'rgba(255,214,10,0.6)',
   threat: 'rgba(230,57,70,0.22)',
+  intent: { move: '#f77f00', hit: '#d62828', invalid: '#8d99ae' },
+  intentRing: 'rgba(247,127,0,0.9)',
 };
 
 export function render(canvas, state, view) {
@@ -53,13 +55,13 @@ export function render(canvas, state, view) {
     for (const sq of view.threat) ctx.fillRect((sq % W) * c, Math.floor(sq / W) * c, c, c);
   }
 
-  // 3. Elevation edges (cliffs thick, passable steps thin) and deploy outline
-  const cliffW = Math.max(3, Math.round(c * 0.14));
+  // 3. Elevation edges (steps thick, ramp edges thin) and deploy outline
+  const stepW = Math.max(3, Math.round(c * 0.12));
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const sq = y * W + x;
-      if (x + 1 < W) drawEdge(ctx, edgeKind(t, sq, sq + 1), (x + 1) * c, y * c, (x + 1) * c, (y + 1) * c, cliffW);
-      if (y + 1 < H) drawEdge(ctx, edgeKind(t, sq, sq + W), x * c, (y + 1) * c, (x + 1) * c, (y + 1) * c, cliffW);
+      if (x + 1 < W) drawEdge(ctx, edgeKind(t, sq, sq + 1), (x + 1) * c, y * c, (x + 1) * c, (y + 1) * c, stepW);
+      if (y + 1 < H) drawEdge(ctx, edgeKind(t, sq, sq + W), x * c, (y + 1) * c, (x + 1) * c, (y + 1) * c, stepW);
     }
   }
   drawDeployOutline(ctx, t, c);
@@ -93,7 +95,18 @@ export function render(canvas, state, view) {
     ctx.fillRect(cx - c, cy - c, 2 * c, 2 * c);
   }
 
-  // 6. Pieces
+  // 6. Pieces (enemies with an intent get a ring underneath)
+  if (view.intents) {
+    for (const { intent, status } of view.intents) {
+      if (status === 'dead') continue;
+      const p = state.pieces[intent.pieceId];
+      ctx.strokeStyle = COLORS.intentRing;
+      ctx.lineWidth = Math.max(2, c * 0.08);
+      ctx.beginPath();
+      ctx.arc((p.sq % W + 0.5) * c, (Math.floor(p.sq / W) + 0.5) * c, c * 0.46, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
   const pendingId = state.pendingPlacement?.pieceId;
   for (const p of Object.values(state.pieces)) drawPiece(ctx, state, p, c, W, p.id === pendingId);
 
@@ -114,7 +127,10 @@ export function render(canvas, state, view) {
     }
   }
 
-  // 8. Hover
+  // 8. Intent arrows
+  if (view.intents) for (const it of view.intents) drawIntent(ctx, it, c, W);
+
+  // 9. Hover
   if (view.hoverSq >= 0) {
     ctx.strokeStyle = 'rgba(0,0,0,0.45)';
     ctx.lineWidth = 1;
@@ -122,21 +138,77 @@ export function render(canvas, state, view) {
   }
 }
 
-function drawEdge(ctx, kind, x1, y1, x2, y2, cliffW) {
+function drawEdge(ctx, kind, x1, y1, x2, y2, stepW) {
   if (kind === 'flat') return;
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
-  if (kind === 'cliff') {
-    ctx.strokeStyle = COLORS.cliff;
-    ctx.lineWidth = cliffW;
+  if (kind === 'step') {
+    ctx.strokeStyle = COLORS.step;
+    ctx.lineWidth = stepW;
     ctx.lineCap = 'square';
   } else {
-    ctx.strokeStyle = COLORS.step;
+    ctx.strokeStyle = COLORS.rampEdge;
     ctx.lineWidth = 1;
     ctx.lineCap = 'butt';
   }
   ctx.stroke();
+}
+
+// Arrow from the enemy to its destination, numbered by execution order.
+// Red = will capture, orange = move, grey dashed = no longer valid (falls back).
+// A purple "+" marks a planned check, a black "#" a planned checkmate.
+function drawIntent(ctx, { intent, status }, c, W) {
+  if (status === 'dead') return;
+  const fx = (intent.from % W + 0.5) * c, fy = (Math.floor(intent.from / W) + 0.5) * c;
+  const tx = (intent.to % W + 0.5) * c, ty = (Math.floor(intent.to / W) + 0.5) * c;
+  const len = Math.hypot(tx - fx, ty - fy) || 1;
+  const ux = (tx - fx) / len, uy = (ty - fy) / len;
+  const sx = fx + ux * c * 0.38, sy = fy + uy * c * 0.38;
+  const ex = tx - ux * c * 0.22, ey = ty - uy * c * 0.22;
+  const color = COLORS.intent[status];
+  const head = c * 0.34;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.globalAlpha = status === 'invalid' ? 0.75 : 0.9;
+  ctx.lineWidth = Math.max(2.5, c * 0.11);
+  ctx.lineCap = 'round';
+  if (status === 'invalid') ctx.setLineDash([c * 0.18, c * 0.14]);
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.lineTo(ex - ux * head * 0.6, ey - uy * head * 0.6);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(ex, ey);
+  ctx.lineTo(ex - ux * head - uy * head * 0.55, ey - uy * head + ux * head * 0.55);
+  ctx.lineTo(ex - ux * head + uy * head * 0.55, ey - uy * head - ux * head * 0.55);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // order badge at the enemy's top-left corner
+  const bx = (intent.from % W) * c + c * 0.2, by = Math.floor(intent.from / W) * c + c * 0.2;
+  ctx.beginPath();
+  ctx.arc(bx, by, c * 0.19, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(c * 0.28)}px system-ui,sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(intent.order), bx, by + 0.5);
+
+  if ((intent.check || intent.mate) && status !== 'invalid') {
+    const mx = (intent.to % W + 1) * c - c * 0.2, my = Math.floor(intent.to / W) * c + c * 0.2;
+    ctx.fillStyle = intent.mate ? '#000' : '#7b2cbf';
+    ctx.beginPath();
+    ctx.arc(mx, my, c * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(intent.mate ? '#' : '+', mx, my + 0.5);
+  }
+  ctx.restore();
 }
 
 // Chevrons pointing uphill (inward, opposite the ramp's side).
@@ -167,7 +239,7 @@ function drawDeployOutline(ctx, t, c) {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       if (!t.deploy[y * W + x]) continue;
-      const i = 2.5; // inset so it doesn't collide with cliff lines
+      const i = 2.5; // inset so it doesn't collide with step lines
       if (!inZone(x, y - 1)) { ctx.moveTo(x * c, y * c + i); ctx.lineTo((x + 1) * c, y * c + i); }
       if (!inZone(x, y + 1)) { ctx.moveTo(x * c, (y + 1) * c - i); ctx.lineTo((x + 1) * c, (y + 1) * c - i); }
       if (!inZone(x - 1, y)) { ctx.moveTo(x * c + i, y * c); ctx.lineTo(x * c + i, (y + 1) * c); }

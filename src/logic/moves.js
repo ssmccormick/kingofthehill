@@ -1,5 +1,5 @@
 // Move generation, attacks, check detection. Pure logic, no DOM.
-import { SIDES, isClimbEdge, isOnBoard } from './terrain.js';
+import { SIDES, climbExtra, isOnBoard } from './terrain.js';
 import { findKing } from './state.js';
 
 const ORTHO = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -8,26 +8,16 @@ const ALL8 = [...ORTHO, ...DIAG];
 const KNIGHT = [[1, 2], [2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1], [-2, 1], [-1, 2]];
 const SLIDE_DIRS = { R: ORTHO, B: DIAG, Q: ALL8 };
 
-export const STEP_BLOCKED = 0;
-export const STEP_OK = 1;
-export const STEP_CLIMB = 2;
-
 export const opponent = (side) => (side === 'player' ? 'enemy' : 'player');
 
-// Can `piece` go from `from` to `to` (a single step or a knight jump) given terrain?
-export function stepRule(state, piece, from, to) {
-  const t = state.terrain;
-  const a = t.elev[from], b = t.elev[to];
-  if (a === b) return STEP_OK;
-  if (b > a) {
-    if (isClimbEdge(t, from, to)) return STEP_CLIMB;
-    if (piece.type === 'N' && piece.side === 'player' && state.mods.knightsClimbCliffs && b - a === 1) return STEP_CLIMB;
-    return STEP_BLOCKED;
-  }
-  if (isClimbEdge(t, to, from)) return STEP_OK; // walking down a ramp / off the summit
-  const tc = state.config.terrain;
-  return (piece.side === 'player' ? tc.playerCanDescendCliffs : tc.enemyCanDescendCliffs) ? STEP_OK : STEP_BLOCKED;
+// Movement cost of a single step or knight jump: 1, plus extra for climbing
+// (see terrain.climbExtra). Player knights with the Cliff Jumper mod ignore it.
+export function stepCost(state, piece, from, to) {
+  if (piece.type === 'N' && piece.side === 'player' && state.mods.knightsIgnoreClimb) return 1;
+  return 1 + climbExtra(state.terrain, state.config, from, to);
 }
+
+const climbs = (state, from, to) => state.terrain.elev[to] > state.terrain.elev[from];
 
 export function slideRange(state, piece) {
   const m = state.config.movement;
@@ -45,12 +35,13 @@ export function slideRange(state, piece) {
 export function forEachAttack(state, piece, cb) {
   const t = state.terrain, W = t.width;
   const x0 = piece.sq % W, y0 = Math.floor(piece.sq / W);
+  const budget = state.config.movement.stepPieceBudget;
   const jump = (offsets) => {
     for (const [dx, dy] of offsets) {
       const x = x0 + dx, y = y0 + dy;
       if (!isOnBoard(t, x, y)) continue;
       const to = y * W + x;
-      if (stepRule(state, piece, piece.sq, to) !== STEP_BLOCKED) cb(to);
+      if (stepCost(state, piece, piece.sq, to) <= budget) cb(to);
     }
   };
   switch (piece.type) {
@@ -68,16 +59,16 @@ export function forEachAttack(state, piece, cb) {
       const range = slideRange(state, piece);
       const climbStops = piece.side === 'enemy' && state.config.movement.enemyClimbStops;
       for (const [dx, dy] of dirs) {
-        let cur = piece.sq, x = x0, y = y0;
-        for (let i = 0; i < range; i++) {
+        let cur = piece.sq, x = x0, y = y0, used = 0;
+        for (;;) {
           x += dx; y += dy;
           if (!isOnBoard(t, x, y)) break;
           const to = y * W + x;
-          const rule = stepRule(state, piece, cur, to);
-          if (rule === STEP_BLOCKED) break;
+          used += stepCost(state, piece, cur, to);
+          if (used > range) break;
           cb(to);
           if (state.grid[to]) break;
-          if (rule === STEP_CLIMB && climbStops) break;
+          if (climbStops && climbs(state, cur, to)) break;
           cur = to;
         }
       }
@@ -103,7 +94,7 @@ export function pseudoMoves(state, piece) {
       const x = (piece.sq % W) + f.dx, y = Math.floor(piece.sq / W) + f.dy;
       if (isOnBoard(state.terrain, x, y)) {
         const to = y * W + x;
-        if (!state.grid[to] && stepRule(state, piece, piece.sq, to) !== STEP_BLOCKED) push(to);
+        if (!state.grid[to] && stepCost(state, piece, piece.sq, to) <= state.config.movement.stepPieceBudget) push(to);
       }
     }
     return moves;

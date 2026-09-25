@@ -3,6 +3,7 @@
 import { legalMoves, isInCheck, isCheckmate } from './moves.js';
 import { log, relocatePiece, removePiece, sqName, PIECE_NAMES } from './state.js';
 import { shouldPromote, promote, placementSquares } from './promotion.js';
+import { planIntents, runEnemyTurn } from './ai.js';
 
 const fail = (error) => ({ ok: false, error });
 
@@ -90,13 +91,19 @@ export function placePending(state, sq) {
   return { ok: true };
 }
 
-// Phase 1: ends the turn and starts the next player turn (no enemy phase yet).
+// Ends the player turn: the enemy intents execute, then the next player turn
+// starts and the next intents are planned.
 export function endTurn(state) {
+  if (state.status !== 'playing') return fail('Game over');
   if (state.pendingPlacement?.kind === 'promotion') return fail('Place the promoted piece first');
+  if (isInCheck(state, 'player')) return fail('Your king is in check — resolve it first');
   state.pendingPlacement = null;
   log(state, `— End of turn ${state.turn} —`);
+  runEnemyTurn(state);
+  if (state.status !== 'playing') return { ok: true };
   state.turn++;
   startPlayerTurn(state);
+  planIntents(state);
   return { ok: true };
 }
 
@@ -109,6 +116,7 @@ export function startPlayerTurn(state) {
   }
   if (isCheckmate(state, 'player')) {
     state.status = 'lost';
+    state.lossReason = 'Checkmate.';
     log(state, 'Checkmate — the king has fallen.');
   } else if (isInCheck(state, 'player')) {
     log(state, 'Your king is in check!');

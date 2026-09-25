@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyState, put, targets } from './helpers.js';
 import { isInCheck, isCheckmate, legalMoves } from '../src/logic/moves.js';
-import { movePiece, endTurn } from '../src/logic/actions.js';
+import { movePiece, endTurn, startPlayerTurn } from '../src/logic/actions.js';
 
 test('check detection on flat ground, blocked by pieces and range', () => {
   const s = emptyState();
@@ -16,17 +16,10 @@ test('check detection on flat ground, blocked by pieces and range', () => {
   assert.equal(isInCheck(s), false);
 });
 
-test('king on the plateau is safe from a rook below the cliff', () => {
+test('enemy on a ramp checks along the plateau row', () => {
   const s = emptyState();
-  put(s, 'K', 'player', 9, 9);
-  put(s, 'R', 'enemy', 9, 4);
-  assert.equal(isInCheck(s), false);
-});
-
-test('enemy on the ramp checks along the plateau row', () => {
-  const s = emptyState();
-  put(s, 'K', 'player', 9, 8);
-  put(s, 'R', 'enemy', 11, 8);
+  put(s, 'K', 'player', 13, 10);
+  put(s, 'R', 'enemy', 11, 10);
   assert.equal(isInCheck(s), true);
 });
 
@@ -87,6 +80,13 @@ test('checkmate at turn start ends the game', () => {
   put(s, 'K', 'player', 0, 0);
   put(s, 'R', 'enemy', 0, 5);
   put(s, 'R', 'enemy', 1, 5);
-  endTurn(s);
+  startPlayerTurn(s);
   assert.equal(s.status, 'lost');
+});
+
+test('cannot end the turn while in check', () => {
+  const s = emptyState();
+  put(s, 'K', 'player', 0, 0);
+  put(s, 'R', 'enemy', 0, 5);
+  assert.equal(endTurn(s).ok, false);
 });

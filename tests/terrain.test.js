@@ -1,140 +1,175 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyState, fullGame, put, sq, targets } from './helpers.js';
-import { pseudoMoves } from '../src/logic/moves.js';
-import { edgeKind } from '../src/logic/terrain.js';
+import { pseudoMoves, isInCheck } from '../src/logic/moves.js';
+import { edgeKind, distanceField } from '../src/logic/terrain.js';
 
-test('default terrain: 8x8 plateau, 2x2 summit, 2-wide ramps centered on each side', () => {
+// Default geometry on 24x24: plateau (level 1) x,y 10..13; summit (level 2) 11..12.
+// Ramps: N (11,10)(12,10) · S (11,13)(12,13) · W (10,11)(10,12) · E (13,11)(13,12).
+
+test('default terrain: 4x4 hill base, 2x2 summit, 2-wide ramps centered on each side', () => {
   const s = emptyState();
   const t = s.terrain;
-  assert.equal(t.elev[sq(s, 7, 7)], 0);
-  assert.equal(t.elev[sq(s, 8, 8)], 1);
-  assert.equal(t.elev[sq(s, 15, 15)], 1);
-  assert.equal(t.elev[sq(s, 16, 15)], 0);
+  assert.equal(t.elev[sq(s, 9, 9)], 0);
+  assert.equal(t.elev[sq(s, 10, 10)], 1);
+  assert.equal(t.elev[sq(s, 13, 13)], 1);
+  assert.equal(t.elev[sq(s, 14, 13)], 0);
   for (const [x, y] of [[11, 11], [12, 11], [11, 12], [12, 12]]) assert.equal(t.elev[sq(s, x, y)], 2);
-  assert.equal(t.elev[sq(s, 10, 11)], 1);
   const ramps = [];
   t.rampSide.forEach((r, i) => r && ramps.push(`${r}:${i % 24},${Math.floor(i / 24)}`));
-  assert.deepEqual(ramps.sort(), ['E:15,11', 'E:15,12', 'N:11,8', 'N:12,8', 'S:11,15', 'S:12,15', 'W:8,11', 'W:8,12'].sort());
+  assert.deepEqual(ramps.sort(), ['E:13,11', 'E:13,12', 'N:11,10', 'N:12,10', 'S:11,13', 'S:12,13', 'W:10,11', 'W:10,12'].sort());
 });
 
-test('deployment zone is the 1-wide level-0 ring around the hill', () => {
+test('deployment zone is the hill base (all 12 level-1 squares)', () => {
   const s = emptyState();
   const d = s.terrain.deploy;
-  assert.ok(d[sq(s, 7, 7)] && d[sq(s, 7, 12)] && d[sq(s, 16, 16)] && d[sq(s, 12, 16)]);
-  assert.ok(!d[sq(s, 6, 12)] && !d[sq(s, 8, 8)] && !d[sq(s, 12, 17)]);
-  assert.equal(d.filter(Boolean).length, 10 * 10 - 8 * 8);
+  assert.equal(d.filter(Boolean).length, 12);
+  assert.ok(d[sq(s, 10, 10)] && d[sq(s, 11, 10)] && d[sq(s, 13, 13)]);
+  assert.ok(!d[sq(s, 11, 11)] && !d[sq(s, 9, 9)]);
 });
 
-test('deploy ring width is configurable', () => {
-  const s = emptyState({ board: { deployRingWidth: 2 } });
-  assert.equal(s.terrain.deploy.filter(Boolean).length, 12 * 12 - 8 * 8);
+test("deployZone 'ring' uses the level-0 ring of configurable width", () => {
+  const s = emptyState({ board: { deployZone: 'ring', deployRingWidth: 1 } });
+  assert.equal(s.terrain.deploy.filter(Boolean).length, 6 * 6 - 4 * 4);
+  const s2 = emptyState({ board: { deployZone: 'ring', deployRingWidth: 2 } });
+  assert.equal(s2.terrain.deploy.filter(Boolean).length, 8 * 8 - 4 * 4);
 });
 
 test('ramp count/width/position configurable', () => {
   const s = emptyState({ board: { ramps: [{ side: 'N', start: 0, width: 3 }] } });
-  const ramps = s.terrain.rampSide.filter(Boolean);
-  assert.equal(ramps.length, 3);
-  assert.equal(s.terrain.rampSide[sq(s, 8, 8)], 'N');
-  assert.equal(s.terrain.rampSide[sq(s, 11, 8)], null);
+  assert.equal(s.terrain.rampSide.filter(Boolean).length, 3);
+  assert.equal(s.terrain.rampSide[sq(s, 10, 10)], 'N');
+  assert.equal(s.terrain.rampSide[sq(s, 13, 10)], null);
 });
 
-test('edge kinds: cliffs vs ramps vs summit steps', () => {
-  const s = emptyState();
-  const t = s.terrain;
-  assert.equal(edgeKind(t, sq(s, 9, 7), sq(s, 9, 8)), 'cliff');
-  assert.equal(edgeKind(t, sq(s, 11, 7), sq(s, 11, 8)), 'passable');
-  assert.equal(edgeKind(t, sq(s, 11, 10), sq(s, 11, 11)), 'passable');
+test('edge kinds: ramps vs steps', () => {
+  const t = emptyState().terrain;
+  const s = { terrain: t };
+  assert.equal(edgeKind(t, sq(s, 11, 9), sq(s, 11, 10)), 'ramp');
+  assert.equal(edgeKind(t, sq(s, 10, 9), sq(s, 10, 10)), 'step');
+  assert.equal(edgeKind(t, sq(s, 11, 10), sq(s, 11, 11)), 'step', 'summit has no ramps');
   assert.equal(edgeKind(t, sq(s, 3, 3), sq(s, 4, 3)), 'flat');
 });
 
-test('nobody slides up a cliff', () => {
+test('a step up costs 2 movement for sliders', () => {
   const s = emptyState();
-  const pr = put(s, 'R', 'player', 9, 3);
-  const er = put(s, 'R', 'enemy', 10, 3);
-  assert.ok(!targets(s, pseudoMoves(s, pr)).includes('9,8'));
-  assert.ok(targets(s, pseudoMoves(s, pr)).includes('9,7'));
-  assert.ok(!targets(s, pseudoMoves(s, er)).includes('10,8'));
+  // 4 flat squares (y 6..9) + step onto (10,10) = 6, + (10,11) = 7 = range.
+  const r = put(s, 'R', 'player', 10, 5);
+  const t = targets(s, pseudoMoves(s, r));
+  assert.ok(t.includes('10,10') && t.includes('10,11'));
+  assert.ok(!t.includes('10,12'));
+  // From (10,3): 6 flat + 2 for the step = 8 > 7, so it can't reach the hill.
+  const r2 = put(s, 'R', 'player', 9, 3);
+  s.grid[r2.sq] = 0; r2.sq = sq(s, 13, 3); s.grid[r2.sq] = r2.id;
+  const t2 = targets(s, pseudoMoves(s, r2));
+  assert.ok(t2.includes('13,9') && !t2.includes('13,10'));
 });
 
-test('king cannot step up a cliff but can use a ramp', () => {
+test('climbing a ramp costs nothing extra', () => {
   const s = emptyState();
-  const k = put(s, 'K', 'player', 10, 7);
-  const t = targets(s, pseudoMoves(s, k));
-  assert.ok(t.includes('11,8'), 'diagonal onto ramp');
-  assert.ok(!t.includes('10,8') && !t.includes('9,8'));
+  // y 6..9 = 4, ramp (11,10) = 5, summit step (11,11) = 7.
+  const r = put(s, 'R', 'player', 11, 5);
+  const t = targets(s, pseudoMoves(s, r));
+  assert.ok(t.includes('11,10') && t.includes('11,11') && !t.includes('11,12'));
 });
 
-test('player may drop down a cliff; enemy may not (but may walk down a ramp)', () => {
+test('king, pawns and knights can only climb via ramps', () => {
   const s = emptyState();
-  const pr = put(s, 'R', 'player', 9, 9);
-  assert.ok(targets(s, pseudoMoves(s, pr)).includes('9,7'));
-  const er = put(s, 'R', 'enemy', 10, 9);
-  const et = targets(s, pseudoMoves(s, er));
-  assert.ok(et.includes('10,8') && !et.includes('10,7'));
-  const ramp = put(s, 'R', 'enemy', 11, 8);
-  assert.ok(targets(s, pseudoMoves(s, ramp)).includes('11,3'));
+  const k = put(s, 'K', 'player', 10, 9);
+  const kt = targets(s, pseudoMoves(s, k));
+  assert.ok(kt.includes('11,10'), 'diagonal onto ramp');
+  assert.ok(!kt.includes('10,10'), 'no stepping up onto a non-ramp square');
+  const k2 = put(s, 'K', 'enemy', 12, 10); // standing on a ramp
+  assert.ok(!targets(s, pseudoMoves(s, k2)).includes('12,11'), 'summit has no ramp');
+
+  const p = put(s, 'P', 'enemy', 13, 9, 'S');
+  assert.deepEqual(targets(s, pseudoMoves(s, p)), [], 'blocked by the step');
+  const p2 = put(s, 'P', 'enemy', 12, 8, 'S');
+  assert.deepEqual(targets(s, pseudoMoves(s, p2)), ['12,9']);
+
+  const n = put(s, 'N', 'enemy', 10, 8);
+  const nt = targets(s, pseudoMoves(s, n));
+  assert.ok(nt.includes('11,10'), 'knight onto ramp');
+  const n2 = put(s, 'N', 'enemy', 14, 8);
+  assert.ok(!targets(s, pseudoMoves(s, n2)).includes('13,10'), 'knight onto a non-ramp step');
 });
 
-test('enemy climb cost: slider stops on the first higher square it enters', () => {
+test('enemy pawn may capture diagonally onto a ramp but not up a step', () => {
   const s = emptyState();
-  const er = put(s, 'R', 'enemy', 11, 3);
-  const t = targets(s, pseudoMoves(s, er));
-  assert.ok(t.includes('11,8'));
-  assert.ok(!t.includes('11,9'));
-  // Onto the summit from the plateau: also stops.
-  const er2 = put(s, 'R', 'enemy', 12, 14);
-  const t2 = targets(s, pseudoMoves(s, er2));
-  assert.ok(t2.includes('12,13') && t2.includes('12,12') && !t2.includes('12,11'));
+  const p = put(s, 'P', 'enemy', 10, 9, 'S');
+  put(s, 'N', 'player', 11, 10);
+  put(s, 'N', 'player', 9, 10);
+  assert.deepEqual(targets(s, pseudoMoves(s, p)), ['11,10', '9,10']);
+  const s2 = emptyState();
+  const p3 = put(s2, 'P', 'enemy', 14, 9, 'S');
+  put(s2, 'N', 'player', 13, 10); // corner step
+  assert.ok(!targets(s2, pseudoMoves(s2, p3)).includes('13,10'));
 });
 
-test('player sliders do not stop when climbing', () => {
+test('Cliff Jumper mod: player knights ignore climb cost, enemy knights do not', () => {
   const s = emptyState();
-  const pr = put(s, 'R', 'player', 11, 3);
+  const pn = put(s, 'N', 'player', 13, 10);
+  const en = put(s, 'N', 'enemy', 10, 13);
+  assert.ok(!targets(s, pseudoMoves(s, pn)).includes('12,12'));
+  s.mods.knightsIgnoreClimb = true;
+  assert.ok(targets(s, pseudoMoves(s, pn)).includes('12,12'));
+  assert.ok(!targets(s, pseudoMoves(s, en)).includes('11,11'));
+});
+
+test('moving down costs nothing extra, for both sides', () => {
+  const s = emptyState();
+  const pr = put(s, 'R', 'player', 10, 10); // range 8 on the plateau
   const t = targets(s, pseudoMoves(s, pr));
-  assert.ok(t.includes('11,8') && t.includes('11,9') && t.includes('11,10'));
-  const pr2 = put(s, 'R', 'player', 12, 14);
-  assert.ok(targets(s, pseudoMoves(s, pr2)).includes('12,10'));
+  assert.ok(t.includes('2,10') && !t.includes('1,10'));
+  const er = put(s, 'R', 'enemy', 13, 13);
+  const et = targets(s, pseudoMoves(s, er));
+  assert.ok(et.includes('13,20') && !et.includes('13,21'));
 });
 
-test('enemyClimbStops is configurable', () => {
+test('enemy climb stop: an enemy slider ends its move on the first higher square', () => {
+  const s = emptyState();
+  const er = put(s, 'R', 'enemy', 10, 5);
+  const t = targets(s, pseudoMoves(s, er));
+  assert.ok(t.includes('10,10') && !t.includes('10,11'));
+  const eq = put(s, 'Q', 'enemy', 11, 7);
+  const qt = targets(s, pseudoMoves(s, eq));
+  assert.ok(qt.includes('11,10') && !qt.includes('11,11'), 'stops on the ramp too');
+});
+
+test('enemyClimbStops and climbExtraCost are configurable', () => {
   const s = emptyState({ movement: { enemyClimbStops: false } });
-  const er = put(s, 'R', 'enemy', 11, 3);
-  assert.ok(targets(s, pseudoMoves(s, er)).includes('11,9'));
+  const er = put(s, 'R', 'enemy', 10, 5);
+  assert.ok(targets(s, pseudoMoves(s, er)).includes('10,11'));
+  const s2 = emptyState({ terrain: { climbExtraCost: 0 } });
+  const p = put(s2, 'P', 'enemy', 13, 9, 'S');
+  assert.deepEqual(targets(s2, pseudoMoves(s2, p)), ['13,10']);
 });
 
-test('knights: onto ramps and summit only via legal climbs; Cliff Jumper lifts it for player knights', () => {
+test('climb cost also limits attacks (and so check)', () => {
   const s = emptyState();
-  const n1 = put(s, 'N', 'enemy', 10, 6);
-  assert.ok(targets(s, pseudoMoves(s, n1)).includes('11,8'), 'onto ramp');
-  assert.ok(!targets(s, pseudoMoves(s, n1)).includes('9,8'), 'not up a cliff');
-  const n2 = put(s, 'N', 'enemy', 13, 10); // summit-adjacent
-  assert.ok(targets(s, pseudoMoves(s, n2)).includes('12,12'));
-  const n3 = put(s, 'N', 'player', 14, 13); // not summit-adjacent
-  assert.ok(!targets(s, pseudoMoves(s, n3)).includes('12,12'));
-  s.mods.knightsClimbCliffs = true;
-  assert.ok(targets(s, pseudoMoves(s, n3)).includes('12,12'));
-  assert.ok(!targets(s, pseudoMoves(s, n1)).includes('9,8'), 'enemy knights still cannot');
+  put(s, 'K', 'player', 10, 10);
+  const r = put(s, 'R', 'enemy', 10, 3); // 6 flat + 2 = 8 > 7
+  assert.equal(isInCheck(s), false);
+  s.grid[r.sq] = 0; r.sq = sq(s, 10, 4); s.grid[r.sq] = r.id; // 5 + 2 = 7
+  assert.equal(isInCheck(s), true);
 });
 
-test('attacks respect terrain: an enemy below a cliff does not attack the plateau', () => {
+test('distance field charges climb costs', () => {
   const s = emptyState();
-  put(s, 'K', 'player', 9, 8);
-  put(s, 'R', 'enemy', 9, 3);
-  assert.equal(pseudoMoves(s, s.pieces[2]).some((m) => m.to === sq(s, 9, 8)), false);
+  const d = distanceField(s.terrain, s.config, sq(s, 11, 11));
+  assert.equal(d[sq(s, 11, 11)], 0);
+  assert.equal(d[sq(s, 11, 10)], 2, 'ramp -> summit is a step');
+  assert.equal(d[sq(s, 11, 9)], 3, 'ground -> ramp is free, then the step');
+  assert.equal(d[sq(s, 11, 5)], 7);
 });
 
-test('starting army: 16 pieces, K+Q on summit, pawns flanking each ramp facing outward', () => {
+test('starting army: summit K/Q/R/R, bishops and knights on corners, pawns on ramps facing out', () => {
   const s = fullGame();
   const ps = Object.values(s.pieces);
   assert.equal(ps.length, 16);
   const count = (t) => ps.filter((p) => p.type === t).length;
   assert.deepEqual([count('K'), count('Q'), count('R'), count('B'), count('N'), count('P')], [1, 1, 2, 2, 2, 8]);
-  for (const p of ps.filter((p) => p.type === 'K' || p.type === 'Q')) assert.equal(s.terrain.elev[p.sq], 2);
-  for (const p of ps.filter((p) => p.type === 'P')) {
-    assert.equal(s.terrain.elev[p.sq], 1);
-    assert.equal(s.terrain.rampSide[p.sq], null);
-  }
-  const north = ps.filter((p) => p.type === 'P' && p.facing === 'N').map((p) => p.sq).sort((a, b) => a - b);
-  assert.deepEqual(north, [sq(s, 10, 8), sq(s, 13, 8)]);
+  for (const p of ps.filter((p) => 'KQR'.includes(p.type))) assert.equal(s.terrain.elev[p.sq], 2);
+  for (const p of ps.filter((p) => 'BN'.includes(p.type))) assert.equal(s.terrain.elev[p.sq], 1);
+  for (const p of ps.filter((p) => p.type === 'P')) assert.equal(s.terrain.rampSide[p.sq], p.facing);
 });

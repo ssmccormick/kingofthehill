@@ -9,7 +9,7 @@ export const DEFAULT_CONFIG = {
   board: {
     width: 24,
     height: 24,
-    plateauSize: 8, // level-1 hill, centered
+    plateauSize: 4, // level-1 hill base, centered (a 1-wide ring around the summit)
     summitSize: 2, // level-2 summit, centered
     // Ramps sit on the plateau's outer ring. `start` is the index along that
     // side of the plateau (0 = the side's first square); null = centered.
@@ -20,14 +20,17 @@ export const DEFAULT_CONFIG = {
       { side: 'S', start: null, width: 2 },
       { side: 'W', start: null, width: 2 },
     ],
-    // Deployment zone: level-0 ring around the base of the hill.
+    // Deployment zone: 'plateau' = every level-1 square (the hill's base).
+    // 'ring' = level-0 squares within deployRingWidth of the plateau.
+    deployZone: 'plateau',
     deployRingWidth: 1,
   },
 
   terrain: {
-    // Moving DOWN across a cliff edge (a non-ramp elevation change).
-    playerCanDescendCliffs: true,
-    enemyCanDescendCliffs: false,
+    // Stepping UP one level costs this much extra movement (so a climb step
+    // costs 2), except stepping onto a ramp square from below, which is free.
+    // Moving down is never extra.
+    climbExtraCost: 1,
   },
 
   movement: {
@@ -36,6 +39,9 @@ export const DEFAULT_CONFIG = {
     hillRangeBonusPieces: ['R', 'B', 'Q'], // which piece types get the bonus
     enemyHillRangeBonus: false, // hill bonus is a player-only perk
     enemyClimbStops: true, // enemy must end its move on the first higher square it enters
+    // Movement budget of K, N and P per move. With climbExtraCost 1 they can
+    // only climb via ramps.
+    stepPieceBudget: 1,
   },
 
   pieceValues: { P: 1, N: 3, B: 3, R: 5, Q: 9, K: 0 },
@@ -61,28 +67,46 @@ export const DEFAULT_CONFIG = {
     redeployedPieceCanMove: false, // may a redeployed piece still move this turn?
   },
 
+  enemy: {
+    aiEnabled: true,
+    enemiesPerTurn: 4,
+    // Enemy move scoring. Each enemy's best move is scored; the top
+    // `enemiesPerTurn` enemies become the telegraphed intents, planned in order
+    // (each intent is planned on the board after the earlier ones).
+    weights: {
+      captureKing: 100000, // only possible if the king walks onto an intent square
+      checkmate: 50000,
+      capture: 100, // x value of the captured piece
+      check: 300,
+      approach: 10, // per unit of path distance closer to the king
+      attacked: 40, // penalty x own piece value when landing on a square the player attacks
+    },
+  },
+
   // Starting army. Anchors:
   //  at:'summit'       dx,dy relative to the summit's top-left square
   //  at:'plateauEdge'  square on the plateau's outer ring on `side`; `along` is
   //                    relative to the summit's top-left x (N/S) or y (E/W).
   //                    Pawns face `side` (they advance outward toward that edge).
+  // Default: K, Q and both rooks fill the summit; bishops and knights hold the
+  // plateau corners; two pawns stand on each ramp, facing outward.
   startLayout: [
     { type: 'K', at: 'summit', dx: 0, dy: 0 },
     { type: 'Q', at: 'summit', dx: 1, dy: 1 },
-    { type: 'R', at: 'summit', dx: -1, dy: 0 },
-    { type: 'R', at: 'summit', dx: 2, dy: 1 },
-    { type: 'B', at: 'summit', dx: 1, dy: -1 },
-    { type: 'B', at: 'summit', dx: 0, dy: 2 },
-    { type: 'N', at: 'summit', dx: 0, dy: -1 },
-    { type: 'N', at: 'summit', dx: 1, dy: 2 },
-    { type: 'P', at: 'plateauEdge', side: 'N', along: -1 },
-    { type: 'P', at: 'plateauEdge', side: 'N', along: 2 },
-    { type: 'P', at: 'plateauEdge', side: 'E', along: -1 },
-    { type: 'P', at: 'plateauEdge', side: 'E', along: 2 },
-    { type: 'P', at: 'plateauEdge', side: 'S', along: -1 },
-    { type: 'P', at: 'plateauEdge', side: 'S', along: 2 },
-    { type: 'P', at: 'plateauEdge', side: 'W', along: -1 },
-    { type: 'P', at: 'plateauEdge', side: 'W', along: 2 },
+    { type: 'R', at: 'summit', dx: 1, dy: 0 },
+    { type: 'R', at: 'summit', dx: 0, dy: 1 },
+    { type: 'B', at: 'summit', dx: -1, dy: -1 },
+    { type: 'B', at: 'summit', dx: 2, dy: 2 },
+    { type: 'N', at: 'summit', dx: 2, dy: -1 },
+    { type: 'N', at: 'summit', dx: -1, dy: 2 },
+    { type: 'P', at: 'plateauEdge', side: 'N', along: 0 },
+    { type: 'P', at: 'plateauEdge', side: 'N', along: 1 },
+    { type: 'P', at: 'plateauEdge', side: 'E', along: 0 },
+    { type: 'P', at: 'plateauEdge', side: 'E', along: 1 },
+    { type: 'P', at: 'plateauEdge', side: 'S', along: 0 },
+    { type: 'P', at: 'plateauEdge', side: 'S', along: 1 },
+    { type: 'P', at: 'plateauEdge', side: 'W', along: 0 },
+    { type: 'P', at: 'plateauEdge', side: 'W', along: 1 },
   ],
 };
 

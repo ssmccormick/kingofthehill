@@ -92,17 +92,17 @@ test('promotion table is read from config', () => {
 test('placement: only empty deployment squares; costs no AP; piece cannot move again this turn', () => {
   const s = emptyState();
   kingAway(s);
-  put(s, 'P', 'enemy', 7, 7, 'S'); // occupies a deploy square
+  put(s, 'N', 'enemy', 10, 10); // occupies a deploy square
   const p = put(s, 'P', 'player', 3, 1, 'N');
   movePiece(s, p.id, sq(s, 3, 0));
   const squares = currentPlacementSquares(s);
-  assert.equal(squares.length, 36 - 1);
+  assert.equal(squares.length, 12 - 1);
   assert.ok(squares.every((q) => s.terrain.deploy[q] && !s.grid[q]));
   assert.equal(placePending(s, sq(s, 3, 3)).ok, false, 'not a deploy square');
   const apBefore = s.ap;
-  assert.ok(placePending(s, sq(s, 12, 7)).ok);
+  assert.ok(placePending(s, sq(s, 11, 10)).ok);
   assert.equal(s.ap, apBefore);
-  assert.equal(p.sq, sq(s, 12, 7));
+  assert.equal(p.sq, sq(s, 11, 10));
   assert.equal(s.grid[sq(s, 3, 0)], 0);
   assert.deepEqual(availableMoves(s, p.id), []);
   endTurn(s);
@@ -114,7 +114,7 @@ test('redeployed piece cannot move even when repeat moves are allowed', () => {
   kingAway(s);
   const p = put(s, 'P', 'player', 3, 1, 'N');
   movePiece(s, p.id, sq(s, 3, 0));
-  placePending(s, sq(s, 12, 7));
+  placePending(s, sq(s, 11, 10));
   assert.deepEqual(availableMoves(s, p.id), []);
 });
 
@@ -129,7 +129,7 @@ test('other actions are blocked until the promoted piece is placed', () => {
 
 test('placement cannot leave the king in check (only blocking squares are legal)', () => {
   // Small board with a wide deploy ring so the edge row is in the zone.
-  const s = emptyState({ board: { width: 12, height: 12, plateauSize: 4, deployRingWidth: 4 } });
+  const s = emptyState({ board: { width: 12, height: 12, plateauSize: 4, deployZone: 'ring', deployRingWidth: 4 } });
   put(s, 'K', 'player', 0, 0);
   put(s, 'R', 'enemy', 5, 0);
   const p = put(s, 'P', 'player', 2, 1, 'N');
@@ -179,7 +179,7 @@ test('Game undo restores pre-move state including promotion', () => {
   for (const p of Object.values(s.pieces)) if (p.type !== 'K') { s.grid[p.sq] = 0; delete s.pieces[p.id]; }
   const p = put(s, 'P', 'player', 3, 1, 'N');
   assert.ok(g.move(p.id, sq(s, 3, 0)).ok);
-  assert.ok(g.place(sq(g.state, 12, 7)).ok);
+  assert.ok(g.place(sq(g.state, 11, 10)).ok);
   assert.equal(g.state.pieces[p.id].type, 'N');
   g.undo();
   assert.ok(g.state.pendingPlacement);

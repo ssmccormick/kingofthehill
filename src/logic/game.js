@@ -1,10 +1,12 @@
 // Thin wrapper holding the state plus an in-turn undo stack.
 import { createGame } from './state.js';
 import * as A from './actions.js';
+import { planIntents } from './ai.js';
 
 export class Game {
   constructor(config, seed) {
     this.state = createGame(config, seed);
+    planIntents(this.state);
     this.undoStack = [];
   }
 
@@ -43,8 +45,10 @@ export class Game {
   }
 
   // Debug edits (not undoable, they clear the stack to keep it consistent).
+  // Intents are re-planned so the arrows reflect the edited board.
   debugEdit(fn) {
     fn(this.state);
+    planIntents(this.state);
     this.undoStack = [];
   }
 }

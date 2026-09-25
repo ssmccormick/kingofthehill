@@ -1,4 +1,4 @@
-// Terrain: elevation grid, ramps, cliffs, deployment zone. Pure data, no DOM.
+// Terrain: elevation grid, ramps, climb costs, deployment zone. Pure data, no DOM.
 
 export const SIDES = {
   N: { dx: 0, dy: -1 },
@@ -14,12 +14,11 @@ function centeredSpan(total, size) {
 }
 
 export function buildTerrain(cfg) {
-  const { width: W, height: H, plateauSize: P, summitSize: S, ramps, deployRingWidth: ring } = cfg.board;
+  const { width: W, height: H, plateauSize: P, summitSize: S, ramps, deployZone, deployRingWidth: ring } = cfg.board;
   const n = W * H;
   const elev = new Array(n).fill(0);
   const rampSide = new Array(n).fill(null); // 'N'|'E'|'S'|'W' on ramp squares
   const deploy = new Array(n).fill(false);
-  const summitAdj = new Array(n).fill(false);
 
   const [px0, px1] = centeredSpan(W, P);
   const [py0, py1] = centeredSpan(H, P);
@@ -46,39 +45,37 @@ export function buildTerrain(cfg) {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = y * W + x;
-      if (elev[i] === 0 && x >= px0 - ring && x <= px1 + ring && y >= py0 - ring && y <= py1 + ring) deploy[i] = true;
-      if (elev[i] === 1) {
-        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-          const nx = x + dx, ny = y + dy;
-          if (nx >= 0 && ny >= 0 && nx < W && ny < H && elev[ny * W + nx] === 2) summitAdj[i] = true;
-        }
-      }
+      if (deployZone === 'plateau') deploy[i] = elev[i] === 1;
+      else deploy[i] = elev[i] === 0 && x >= px0 - ring && x <= px1 + ring && y >= py0 - ring && y <= py1 + ring;
     }
   }
 
   return {
-    width: W, height: H, elev, rampSide, deploy, summitAdj,
+    width: W, height: H, elev, rampSide, deploy,
     plateau: { x0: px0, y0: py0, x1: px1, y1: py1 },
     summit: { x0: sx0, y0: sy0, x1: sx1, y1: sy1 },
   };
 }
 
-// True if a piece may climb from `low` up to `high` (exactly one level) without
-// crossing a cliff: 0->1 only onto a ramp square, 1->2 only from a plateau
-// square adjacent to the summit.
-export function isClimbEdge(t, low, high) {
-  const el = t.elev[low], eh = t.elev[high];
-  if (eh - el !== 1) return false;
-  if (eh === 1) return t.rampSide[high] !== null;
-  if (eh === 2) return t.summitAdj[low];
-  return false;
+// Is from->to a ramp climb (one level up, onto a ramp square)? Ramp climbs are free.
+export function isRampClimb(t, from, to) {
+  return t.elev[to] - t.elev[from] === 1 && t.rampSide[to] !== null;
+}
+
+// Extra movement a climb costs, beyond the normal 1 per square. 0 for flat,
+// downhill and ramp climbs; climbExtraCost per level otherwise.
+export function climbExtra(t, cfg, from, to) {
+  const diff = t.elev[to] - t.elev[from];
+  if (diff <= 0) return 0;
+  if (diff === 1 && isRampClimb(t, from, to)) return 0;
+  return diff * cfg.terrain.climbExtraCost;
 }
 
 // Classifies the boundary between two ORTHOGONALLY adjacent squares for rendering.
 export function edgeKind(t, a, b) {
   if (t.elev[a] === t.elev[b]) return 'flat';
   const [low, high] = t.elev[a] < t.elev[b] ? [a, b] : [b, a];
-  return isClimbEdge(t, low, high) ? 'passable' : 'cliff';
+  return isRampClimb(t, low, high) ? 'ramp' : 'step';
 }
 
 export function isOnBoard(t, x, y) {
@@ -101,4 +98,34 @@ export function inwardFacing(t, sq) {
   const d = [['N', y], ['S', t.height - 1 - y], ['W', x], ['E', t.width - 1 - x]];
   d.sort((a, b) => a[1] - b[1]);
   return OPPOSITE[d[0][0]];
+}
+
+// Movement-cost distance from every square to `target`, moving one square at a
+// time (8 directions) and paying climb costs. Ignores pieces. Used by the AI.
+export function distanceField(t, cfg, target) {
+  const W = t.width, H = t.height, n = W * H;
+  const dist = new Array(n).fill(Infinity);
+  dist[target] = 0;
+  // Costs are small integers (1..3), so a bucket queue is enough.
+  const buckets = [[target]];
+  for (let d = 0; d < buckets.length; d++) {
+    const bucket = buckets[d];
+    if (!bucket) continue;
+    for (const to of bucket) {
+      if (dist[to] !== d) continue;
+      const tx = to % W, ty = Math.floor(to / W);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const x = tx + dx, y = ty + dy;
+        if (x < 0 || y < 0 || x >= W || y >= H) continue;
+        const from = y * W + x; // stepping from `from` into `to`
+        const nd = d + 1 + climbExtra(t, cfg, from, to);
+        if (nd < dist[from]) {
+          dist[from] = nd;
+          (buckets[nd] ||= []).push(from);
+        }
+      }
+    }
+  }
+  return dist;
 }

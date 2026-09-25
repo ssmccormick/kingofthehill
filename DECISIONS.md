@@ -3,31 +3,36 @@
 When the spec was ambiguous, the simplest interpretation was chosen and made
 configurable where it matters. Config keys are in `src/config.js`.
 
-## Terrain
-- **Ramp squares are plateau squares** (level 1) on the plateau's outer ring.
-  A 0→1 climb is legal only if the square entered is a ramp. Entering it
-  diagonally from outside is allowed. (`board.ramps`: side / start / width, any count.)
-- **Summit access:** a 1→2 climb is legal from any plateau square that touches
-  the summit, including diagonally. Since every square around the summit touches
-  it, the summit has no cliffs.
-- **Cliff** = any elevation change that isn't a legal climb edge. Climbs of more
-  than one level at once are never allowed.
-- **Descending:** player pieces may drop down cliffs (`terrain.playerCanDescendCliffs`).
-  Enemies may only walk down ramp and summit edges (`terrain.enemyCanDescendCliffs = false`).
-- **Knights** follow the same rule for their destination: a jump that lands one
-  level higher must land on a ramp (0→1) or start next to the summit (1→2).
-  The *Cliff Jumper* upgrade hook is `state.mods.knightsClimbCliffs` (player knights only).
-- **Deployment zone** = level-0 squares within `deployRingWidth` (Chebyshev
-  distance) of the plateau, corners included. That is 36 squares by default.
+## Terrain (revised in phase 2)
+- **Hill:** the base (level 1) is a 4×4 ring around the 2×2 summit
+  (`board.plateauSize = 4`). The base is also the deployment zone
+  (`board.deployZone = 'plateau'`). The old level-0 ring is still available
+  with `deployZone: 'ring'`.
+- **No cliffs.** Stepping up one level costs `terrain.climbExtraCost` (1)
+  extra movement, so a climb step costs 2 range. Stepping onto a **ramp**
+  square from the level below costs nothing extra. Moving down never costs
+  extra, for either side.
+- **Ramp squares** sit on the base's outer ring, 2 wide and centered on each
+  side (`board.ramps`). Entering one diagonally from below also counts as a
+  ramp climb. The summit has no ramps, so reaching it always costs the extra point.
+- **Kings, knights and pawns** have a movement budget of 1
+  (`movement.stepPieceBudget`). A knight's jump counts as one move. So these
+  pieces can climb only via ramps, and nothing but a slider can get onto the
+  summit. The *Cliff Jumper* upgrade hook is `state.mods.knightsIgnoreClimb`
+  (player knights only).
 - **Attacks obey terrain.** A piece attacks exactly the squares it could move
-  to, so an enemy rook below a cliff does not attack or check the plateau.
+  to, so the climb cost also shortens how far up the hill an enemy can reach.
+- **Starting army:** with only 16 squares on the hill, it's packed. K, Q and
+  both rooks hold the summit, bishops and knights hold the base corners, and
+  the pawns stand on the ramps facing outward. The deployment zone starts full.
 
 ## Movement
 - Range is based on the square where the move **starts**. Player R/B/Q get
   `slideRangeBase + elevation × hillRangeBonusPerLevel` (7 / 8 / 9).
   Enemies never get the bonus (`movement.enemyHillRangeBonus`).
-- Player sliders do **not** stop when they climb. Enemy sliders stop on the
-  first higher square they enter (`movement.enemyClimbStops`).
+- Sliders pay climb costs out of their range. Player sliders keep going after
+  a climb. Enemy sliders also stop on the first higher square they enter
+  (`movement.enemyClimbStops`).
 - Pawns face a cardinal direction, set per pawn. Player pawns start facing the
   plateau side they stand on. Moves are one step forward, captures are one
   square diagonally forward. No double step, no en passant.
@@ -60,3 +65,36 @@ configurable where it matters. Config keys are in `src/config.js`.
   `canRedeploy` lasts until used, even if the piece moves normally in between.
 - A redeployed piece is locked for the rest of the turn
   (`promotion.redeployedPieceCanMove = false`), even when repeat moves are enabled.
+
+## Enemy AI & intents (phase 2)
+- **Scoring:** each enemy move is scored with weights from `enemy.weights`:
+  - capture = `capture` × value of the piece taken
+  - newly giving check = `check`
+  - checkmate (v1 definition) = `checkmate`
+  - approach = `approach` × reduction in path distance to the king
+  - landing on a square the player attacks = −`attacked` × own value
+
+  Path distance uses 8-direction steps with climb costs (ramps are the cheap
+  way up) and ignores pieces.
+- **Planning:** the top-scoring enemy and its best move become intent #1.
+  That move is applied to a scratch board, then #2 is planned, and so on up to
+  `enemy.enemiesPerTurn`. Each enemy moves at most once. Planning intents in
+  order keeps them consistent: two enemies never plan the same square, and
+  #2 already sees #1's capture.
+- **Ties:** a tie goes to the lowest piece id, then to move-generation order.
+  No randomness, so the same position always gives the same plan.
+- **Validity at execution:**
+  - An intent executes if its enemy is still on its start square and can
+    still reach the destination.
+  - A planned capture needs the same target still on that square.
+  - A planned plain move onto a square a player piece has since moved onto
+    executes as a capture. Stepping into a telegraphed arrow gets you hit.
+  - Anything else falls back to the enemy's best current move by the same
+    scoring, or it skips.
+  - If the enemy was captured, its intent is cancelled with no replacement.
+- **Loss:** you can't end the turn while in check. You lose if you're
+  checkmated at the start of your turn (v1 definition) or the king is
+  captured. Capture can only happen through a fallback move or a discovered
+  line during the enemy's sequence.
+- **Dev panel:** turning the AI off clears the intents, and the enemy turn
+  does nothing. Dev edits re-plan the intents immediately.

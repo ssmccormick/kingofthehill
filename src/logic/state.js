@@ -27,9 +27,11 @@ export function createEmptyState(config, seed = config.seed) {
     ap: config.turn.apPerTurn,
     pendingPlacement: null, // { pieceId, apCost, kind: 'promotion'|'redeploy' }
     captured: { player: [], enemy: [] }, // types lost by each side
-    mods: { extraAP: 0, extraHillRange: 0, knightsClimbCliffs: false },
+    mods: { extraAP: 0, extraHillRange: 0, knightsIgnoreClimb: false },
+    intents: [], // telegraphed enemy moves for the coming enemy turn (see ai.js)
     log: [],
-    status: 'playing',
+    status: 'playing', // 'playing' | 'lost'
+    lossReason: null,
   };
 }
 
