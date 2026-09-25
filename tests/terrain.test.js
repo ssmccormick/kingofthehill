@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyState, fullGame, put, sq, targets } from './helpers.js';
 import { pseudoMoves, isInCheck } from '../src/logic/moves.js';
-import { edgeKind, distanceField } from '../src/logic/terrain.js';
+import { edgeKind, distanceField, edgeSpawnSquares } from '../src/logic/terrain.js';
 
 // Default geometry on 24x24: plateau (level 1) x,y 10..13; summit (level 2) 11..12.
 // Ramps: N (11,10)(12,10) · S (11,13)(12,13) · W (10,11)(10,12) · E (13,11)(13,12).
@@ -142,6 +142,7 @@ test('enemyClimbStops and climbExtraCost are configurable', () => {
   assert.ok(targets(s, pseudoMoves(s, er)).includes('10,11'));
   const s2 = emptyState({ terrain: { climbExtraCost: 0 } });
   const p = put(s2, 'P', 'enemy', 13, 9, 'S');
+  p.hasMoved = true;
   assert.deepEqual(targets(s2, pseudoMoves(s2, p)), ['13,10']);
 });
 
@@ -172,4 +173,15 @@ test('starting army: summit K/Q/R/R, bishops and knights on corners, pawns on ra
   for (const p of ps.filter((p) => 'KQR'.includes(p.type))) assert.equal(s.terrain.elev[p.sq], 2);
   for (const p of ps.filter((p) => 'BN'.includes(p.type))) assert.equal(s.terrain.elev[p.sq], 1);
   for (const p of ps.filter((p) => p.type === 'P')) assert.equal(s.terrain.rampSide[p.sq], p.facing);
+});
+
+test('enemy pawns spawn only in the middle 4 squares of each edge', () => {
+  const s = emptyState();
+  const pawn = edgeSpawnSquares(s.terrain, s.config.spawn, 'P').map((q) => `${q % 24},${Math.floor(q / 24)}`).sort();
+  const expected = [];
+  for (const i of [10, 11, 12, 13]) expected.push(`${i},0`, `${i},23`, `0,${i}`, `23,${i}`);
+  assert.deepEqual(pawn, expected.sort());
+  assert.equal(edgeSpawnSquares(s.terrain, s.config.spawn, 'R').length, 4 * 24 - 4);
+  const s6 = emptyState({ spawn: { pawnLaneWidth: 6 } });
+  assert.equal(edgeSpawnSquares(s6.terrain, s6.config.spawn, 'P').length, 24);
 });

@@ -42,6 +42,15 @@ export const DEFAULT_CONFIG = {
     // Movement budget of K, N and P per move. With climbExtraCost 1 they can
     // only climb via ramps.
     stepPieceBudget: 1,
+    // A pawn that hasn't moved yet may advance two squares (both empty, each
+    // step obeying the climb rules). No en passant.
+    pawnDoubleStep: true,
+  },
+
+  spawn: {
+    // Enemy pawns spawn only on the middle N squares of each board edge, so
+    // marching forward takes them toward the hill. Other pieces use any edge square.
+    pawnLaneWidth: 4,
   },
 
   pieceValues: { P: 1, N: 3, B: 3, R: 5, Q: 9, K: 0 },
@@ -70,6 +79,9 @@ export const DEFAULT_CONFIG = {
   enemy: {
     aiEnabled: true,
     enemiesPerTurn: 4,
+    // Re-plan the telegraphed intents after every player move / placement, so
+    // the arrows always show what the enemy will do from the current board.
+    replanAfterPlayerMove: true,
     // Enemy move scoring. Each enemy's best move is scored; the top
     // `enemiesPerTurn` enemies become the telegraphed intents, planned in order
     // (each intent is planned on the board after the earlier ones).

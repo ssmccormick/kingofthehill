@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyState, put, sq, xy } from './helpers.js';
-import { planIntents, runEnemyTurn, intentStatus, bestMoveFor, scoreMove } from '../src/logic/ai.js';
+import { planIntents, runEnemyTurn, intentStatus, intentStatuses, bestMoveFor, scoreMove } from '../src/logic/ai.js';
 import { endTurn, movePiece } from '../src/logic/actions.js';
 import { pseudoMoves } from '../src/logic/moves.js';
 import { removePiece } from '../src/logic/state.js';
@@ -77,6 +77,7 @@ test('avoids squares the player attacks when the penalty outweighs the gain', ()
   put(s, 'K', 'player', 23, 23);
   put(s, 'R', 'player', 0, 6); // guards row 6
   const e = put(s, 'P', 'enemy', 5, 5, 'S'); // forward is (5,6)
+  e.hasMoved = true;
   const moves = pseudoMoves(s, e);
   assert.equal(moves.length, 1);
   assert.ok(scoreMove(s, e, moves[0]).score < -500);
@@ -89,8 +90,8 @@ test('intents execute in order and new intents are planned', () => {
   const b = put(s, 'P', 'enemy', 20, 0, 'S');
   planIntents(s);
   assert.ok(endTurn(s).ok);
-  assert.equal(at(s, a.sq), '3,1');
-  assert.equal(at(s, b.sq), '20,1');
+  assert.equal(at(s, a.sq), '3,2', 'double step on the first move');
+  assert.equal(at(s, b.sq), '20,2');
   assert.equal(s.turn, 2);
   assert.equal(s.intents.length, 2);
 });
@@ -108,8 +109,21 @@ test('fallback: a blocked intent uses the best alternative move', () => {
   assert.match(s.log.at(-1).text, /fallback/);
 });
 
-test('fallback: a capture intent whose target left re-plans', () => {
+test('intents are re-planned after every player move', () => {
   const s = emptyState();
+  put(s, 'K', 'player', 23, 23);
+  const r = put(s, 'R', 'enemy', 2, 2);
+  const q = put(s, 'Q', 'player', 6, 2);
+  planIntents(s);
+  assert.equal(s.intents[0].capture, q.id);
+  assert.ok(movePiece(s, q.id, sq(s, 2, 6)).ok); // still in the rook's reach
+  assert.equal(s.intents[0].pieceId, r.id);
+  assert.equal(at(s, s.intents[0].to), '2,6', 'rook now aims at the queen\'s new square');
+  assert.equal(intentStatus(s, s.intents[0]), 'hit');
+});
+
+test('with re-planning off, a capture intent whose target left falls back', () => {
+  const s = emptyState({ enemy: { replanAfterPlayerMove: false } });
   put(s, 'K', 'player', 23, 23);
   const r = put(s, 'R', 'enemy', 2, 2);
   const q = put(s, 'Q', 'player', 6, 2);
@@ -195,4 +209,31 @@ test('debug spawner is seeded and uses empty edge squares', async () => {
   const pb = spawnRandomEnemies(b, 8).map((p) => [p.type, p.sq, p.facing]);
   assert.deepEqual(pa, pb);
   assert.equal(pa.length, 8);
+});
+
+test('debug spawner puts pawns only in the pawn lanes, facing the center', async () => {
+  const { spawnRandomEnemies } = await import('../src/logic/debug.js');
+  const s = emptyState();
+  const placed = spawnRandomEnemies(s, 30);
+  for (const p of placed.filter((p) => p.type === 'P')) {
+    const [x, y] = xy(s, p.sq);
+    const lane = (v) => v >= 10 && v <= 13;
+    assert.ok((y === 0 && lane(x) && p.facing === 'S') || (y === 23 && lane(x) && p.facing === 'N')
+      || (x === 0 && lane(y) && p.facing === 'E') || (x === 23 && lane(y) && p.facing === 'W'), `${x},${y} ${p.facing}`);
+  }
+});
+
+test('intent statuses replay the sequence (a later intent may depend on an earlier one)', () => {
+  const s = emptyState();
+  put(s, 'K', 'player', 23, 23);
+  const a = put(s, 'N', 'enemy', 2, 4);
+  const r = put(s, 'R', 'enemy', 2, 2);
+  put(s, 'N', 'player', 2, 7);
+  // #1: knight leaves the rook's file; #2: rook takes the knight at (2,7).
+  s.intents = [
+    { order: 1, pieceId: a.id, from: a.sq, to: sq(s, 4, 5), capture: 0 },
+    { order: 2, pieceId: r.id, from: r.sq, to: sq(s, 2, 7), capture: s.grid[sq(s, 2, 7)] },
+  ];
+  assert.equal(intentStatus(s, s.intents[1]), 'invalid', 'alone, the rook is blocked');
+  assert.deepEqual(intentStatuses(s), ['move', 'hit']);
 });

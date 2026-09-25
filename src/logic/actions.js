@@ -49,6 +49,7 @@ export function movePiece(state, pieceId, toSq) {
   log(state, text);
 
   if (shouldPromote(state, piece)) promote(state, piece);
+  replan(state);
   return { ok: true, move };
 }
 
@@ -88,6 +89,7 @@ export function placePending(state, sq) {
   state.ap -= pp.apCost;
   state.pendingPlacement = null;
   log(state, `${PIECE_NAMES[piece.type]} redeployed ${sqName(state, from)} → ${sqName(state, sq)}${pp.apCost ? ` (${pp.apCost} AP)` : ''}`);
+  replan(state);
   return { ok: true };
 }
 
@@ -105,6 +107,11 @@ export function endTurn(state) {
   startPlayerTurn(state);
   planIntents(state);
   return { ok: true };
+}
+
+// Enemies re-evaluate their telegraphed moves after each player action.
+function replan(state) {
+  if (state.config.enemy.replanAfterPlayerMove) planIntents(state);
 }
 
 export function startPlayerTurn(state) {

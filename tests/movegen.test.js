@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyState, put, targets } from './helpers.js';
+import { emptyState, put, targets, sq } from './helpers.js';
+import { movePiece } from '../src/logic/actions.js';
 import { pseudoMoves, legalMoves, slideRange } from '../src/logic/moves.js';
 
 test('rook on flat ground is capped at range 7', () => {
@@ -76,9 +77,10 @@ test('king moves one square in 8 directions', () => {
   assert.equal(pseudoMoves(s, corner).length, 3);
 });
 
-test('player pawn moves outward along its facing, captures diagonally forward, no double step', () => {
+test('player pawn moves outward along its facing, captures diagonally forward', () => {
   const s = emptyState();
   const p = put(s, 'P', 'player', 3, 5, 'N');
+  p.hasMoved = true;
   assert.deepEqual(targets(s, pseudoMoves(s, p)), ['3,4']);
   put(s, 'N', 'enemy', 2, 4);
   put(s, 'N', 'enemy', 4, 6); // behind-diagonal: not capturable
@@ -88,14 +90,51 @@ test('player pawn moves outward along its facing, captures diagonally forward, n
 
   const e = put(s, 'P', 'player', 20, 3, 'E');
   put(s, 'B', 'enemy', 21, 2);
-  assert.deepEqual(targets(s, pseudoMoves(s, e)), ['21,2', '21,3']);
+  assert.deepEqual(targets(s, pseudoMoves(s, e)), ['21,2', '21,3', '22,3'], 'first move may double-step');
 });
 
 test('enemy pawn moves inward per its facing', () => {
   const s = emptyState();
   const p = put(s, 'P', 'enemy', 5, 0, 'S');
   put(s, 'R', 'player', 6, 1);
-  assert.deepEqual(targets(s, pseudoMoves(s, p)), ['5,1', '6,1']);
+  assert.deepEqual(targets(s, pseudoMoves(s, p)), ['5,1', '5,2', '6,1']);
+});
+
+test('pawn double step: first move only, both squares empty', () => {
+  const s = emptyState();
+  const p = put(s, 'P', 'enemy', 5, 0, 'S');
+  assert.deepEqual(targets(s, pseudoMoves(s, p)), ['5,1', '5,2']);
+  put(s, 'N', 'player', 5, 2);
+  assert.deepEqual(targets(s, pseudoMoves(s, p)), ['5,1'], 'far square occupied');
+  put(s, 'N', 'player', 5, 1);
+  assert.deepEqual(targets(s, pseudoMoves(s, p)), [], 'near square occupied: no jumping');
+  const q = put(s, 'P', 'player', 8, 8, 'N');
+  q.hasMoved = true;
+  assert.deepEqual(targets(s, pseudoMoves(s, q)), ['8,7']);
+});
+
+test('pawn loses the double step once it has moved', () => {
+  const s = emptyState();
+  put(s, 'K', 'player', 23, 23);
+  const p = put(s, 'P', 'player', 3, 10, 'N');
+  assert.ok(movePiece(s, p.id, sq(s, 3, 9)).ok);
+  assert.deepEqual(targets(s, pseudoMoves(s, p)), ['3,8']);
+});
+
+test('pawnDoubleStep can be turned off', () => {
+  const s = emptyState({ movement: { pawnDoubleStep: false } });
+  const p = put(s, 'P', 'enemy', 5, 0, 'S');
+  assert.deepEqual(targets(s, pseudoMoves(s, p)), ['5,1']);
+});
+
+test('pawn double step obeys climb rules on each step', () => {
+  const s = emptyState();
+  const up = put(s, 'P', 'enemy', 13, 8, 'S'); // (13,10) is a non-ramp step
+  assert.deepEqual(targets(s, pseudoMoves(s, up)), ['13,9']);
+  const ramp = put(s, 'P', 'enemy', 12, 8, 'S'); // (12,10) is a ramp: free climb
+  assert.deepEqual(targets(s, pseudoMoves(s, ramp)), ['12,10', '12,9']);
+  const ramp2 = put(s, 'P', 'enemy', 11, 9, 'S');
+  assert.deepEqual(targets(s, pseudoMoves(s, ramp2)), ['11,10'], 'ramp then summit step: stops at the ramp');
 });
 
 test('legal moves exclude moves that expose the king (pin)', () => {

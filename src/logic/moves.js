@@ -90,11 +90,16 @@ export function pseudoMoves(state, piece) {
     });
     const f = SIDES[piece.facing];
     if (f) {
-      const W = state.terrain.width;
-      const x = (piece.sq % W) + f.dx, y = Math.floor(piece.sq / W) + f.dy;
-      if (isOnBoard(state.terrain, x, y)) {
+      const W = state.terrain.width, m = state.config.movement;
+      const steps = m.pawnDoubleStep && !piece.hasMoved ? 2 : 1;
+      let cur = piece.sq;
+      for (let i = 1; i <= steps; i++) {
+        const x = (piece.sq % W) + f.dx * i, y = Math.floor(piece.sq / W) + f.dy * i;
+        if (!isOnBoard(state.terrain, x, y)) break;
         const to = y * W + x;
-        if (!state.grid[to] && stepCost(state, piece, piece.sq, to) <= state.config.movement.stepPieceBudget) push(to);
+        if (state.grid[to] || stepCost(state, piece, cur, to) > m.stepPieceBudget) break;
+        push(to);
+        cur = to;
       }
     }
     return moves;

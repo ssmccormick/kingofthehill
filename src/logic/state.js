@@ -49,6 +49,7 @@ export function addPiece(state, { type, side, sq, facing = null }) {
     id, type, side, sq,
     facing: type === 'P' ? facing : null,
     captures: 0,
+    hasMoved: false, // for the pawn double step
     movesThisTurn: 0,
     lockedThisTurn: false, // redeployed this turn
     canRedeploy: false, // promoted while the zone was full
@@ -70,6 +71,7 @@ export function relocatePiece(state, id, toSq) {
   state.grid[p.sq] = 0;
   state.grid[toSq] = id;
   p.sq = toSq;
+  p.hasMoved = true;
 }
 
 export function pieceAt(state, sq) {

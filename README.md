@@ -60,7 +60,8 @@ DECISIONS.md                 how ambiguous rules were resolved
   move 1, so they can climb only via ramps. The hill's base is the
   **deployment zone** (blue dashed outline). Hover a square for its details.
 - **Enemy intents**: numbered arrows show exactly which enemies will move
-  and where, in order, when you end the turn. Red means capture, orange means
+  and where, in order, when you end the turn. The enemies re-plan after each
+  of your moves, so the arrows always reflect the current board. Red means capture, orange means
   move, and grey dashed means your move blocked it, so that enemy will pick
   another move. Purple + means check and black # means checkmate. The side
   panel lists them too.
@@ -71,7 +72,8 @@ DECISIONS.md                 how ambiguous rules were resolved
   zone right away. If no square is free, it waits on the edge with a ↻ marker.
   Select it and use **Redeploy** (1 AP) on a later turn.
 - **Dev panel**:
-  - Place enemy or player pieces, erase pieces, or spawn 8 random enemies (seeded).
+  - Place enemy or player pieces anywhere, erase pieces, or spawn 8 random
+    enemies (seeded; pawns only in the middle 4 squares of each edge).
   - Turn the enemy AI on or off, and set enemies per turn. Both apply immediately.
   - Change board, plateau, ramp, climb-cost and AP settings. These apply on
     restart and are remembered in localStorage.

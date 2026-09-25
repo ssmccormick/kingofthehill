@@ -3,7 +3,7 @@ import { DEFAULT_CONFIG, mergeConfig } from '../config.js';
 import { Game } from '../logic/game.js';
 import { addPiece, removePiece, PIECE_NAMES, xyOf } from '../logic/state.js';
 import { attackedSquares, isInCheck, slideRange } from '../logic/moves.js';
-import { intentStatus } from '../logic/ai.js';
+import { intentStatuses } from '../logic/ai.js';
 import { availableMoves, pieceBlockedReason, currentPlacementSquares, startPlayerTurn } from '../logic/actions.js';
 import { promotionPieceFor } from '../logic/promotion.js';
 import { inwardFacing, OPPOSITE } from '../logic/terrain.js';
@@ -123,7 +123,7 @@ function updateTooltip(e, sq) {
   const p = sq >= 0 ? game.state.pieces[game.state.grid[sq]] : null;
   if (!p) { tip.hidden = true; return; }
   let text = `${p.side === 'player' ? '' : 'Enemy '}${PIECE_NAMES[p.type]}`;
-  if (p.type === 'P') text += ` · facing ${p.facing}`;
+  if (p.type === 'P') text += ` · facing ${p.facing}${p.hasMoved ? '' : ' · can double-step'}`;
   if (p.side === 'player' && p.type === 'P') {
     const into = promotionPieceFor(game.state.config.promotion.table, p.captures);
     text += ` · ${p.captures} capture${p.captures === 1 ? '' : 's'} · promotes to ${PIECE_NAMES[into]} now`;
@@ -332,8 +332,15 @@ function renderSelection() {
   }
 }
 
+// Cached: refresh() also runs on hover, and the statuses only change with the board.
+let intentCache = { key: null, view: [] };
 function intentView(s) {
-  return (s.intents || []).map((intent) => ({ intent, status: intentStatus(s, intent) }));
+  const key = `${s.grid.join(',')}|${JSON.stringify(s.intents)}`;
+  if (intentCache.key !== key) {
+    const statuses = intentStatuses(s);
+    intentCache = { key, view: (s.intents || []).map((intent, i) => ({ intent, status: statuses[i] })) };
+  }
+  return intentCache.view;
 }
 
 function renderIntents() {

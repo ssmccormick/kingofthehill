@@ -35,8 +35,19 @@ configurable where it matters. Config keys are in `src/config.js`.
   (`movement.enemyClimbStops`).
 - Pawns face a cardinal direction, set per pawn. Player pawns start facing the
   plateau side they stand on. Moves are one step forward, captures are one
-  square diagonally forward. No double step, no en passant.
-- Enemy pawns placed via the dev panel face inward from their nearest edge.
+  square diagonally forward. No en passant.
+- **Double step** (`movement.pawnDoubleStep`): any pawn that has never moved
+  (`piece.hasMoved`, set on its first move) may advance two squares. This
+  applies to both sides. Both squares must be empty, and each step must obey
+  the climb rules on its own, so a double step can climb a ramp but not a
+  step. Promoted pieces aren't pawns, so this never matters for them.
+- **Enemy pawn lanes** (`spawn.pawnLaneWidth` = 4): enemy pawns spawn only on
+  the middle 4 squares of each board edge (x or y = 10..13 on 24×24),
+  facing the center, so marching forward takes them toward the hill.
+  Corners are never pawn squares. Other enemy types may spawn on any edge
+  square. The dev panel's random spawner follows this rule. Placing one piece
+  by hand in the dev panel doesn't, so you can still build test positions.
+- Enemy pawns placed by hand in the dev panel face inward from their nearest edge.
   On ties, N/S wins over E/W.
 
 ## Turn / AP (pulled into phase 1 because redeploy rules depend on it)
@@ -76,6 +87,14 @@ configurable where it matters. Config keys are in `src/config.js`.
 
   Path distance uses 8-direction steps with climb costs (ramps are the cheap
   way up) and ignores pieces.
+- **Re-planning** (`enemy.replanAfterPlayerMove`, on by default): the
+  intents are re-planned after every player move, promotion placement and
+  redeploy, so the arrows always show what the enemies will do from the
+  current board. Undo restores the earlier plan along with the board.
+  Because of re-planning, a grey dashed ("falls back") arrow can only appear
+  when an earlier enemy move in the same sequence blocks a later one. With
+  re-planning off, intents stay locked for the whole player turn, which is
+  the original Into the Breach behaviour.
 - **Planning:** the top-scoring enemy and its best move become intent #1.
   That move is applied to a scratch board, then #2 is planned, and so on up to
   `enemy.enemiesPerTurn`. Each enemy moves at most once. Planning intents in

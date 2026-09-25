@@ -31,7 +31,7 @@
       <div id="banner" class="banner" hidden></div>
       <div id="selection" class="panel"></div>
       <div class="panel">
-        <div class="panel-title">Enemy intents <span class="muted">(they move when you end the turn)</span></div>
+        <div class="panel-title">Enemy intents <span class="muted">(updated after each of your moves; they act when you end the turn)</span></div>
         <ol id="intents"></ol>
       </div>
       <div id="hoverInfo" class="panel muted"></div>
@@ -94,8 +94,9 @@
           <li><span class="sw l0"></span> ground (level 0) <span class="sw l1"></span> plateau (1) <span class="sw l2"></span> summit (2)</li>
           <li><b>Thick dark line</b> = step up: costs 1 extra movement, so kings, knights and pawns can't climb it. Chevrons = ramp (free climb, points uphill).</li>
           <li><b>Blue dashed outline</b> = deployment zone (the hill's base).</li>
-          <li>Enemy intents: numbered arrows in execution order. Red = capture, orange = move, grey dashed = no longer valid (the enemy will pick another move). Purple + = gives check, black # = checkmate.</li>
-          <li>Pawn badge = captures; small tick = facing. Hover a pawn to see its promotion.</li>
+          <li>Enemy intents: numbered arrows in execution order. Red = capture, orange = move, grey dashed = blocked by an earlier enemy move in the sequence (that enemy picks another move). Purple + = gives check, black # = checkmate.</li>
+          <li>Pawn badge = captures; small tick = facing. Hover a pawn to see its promotion. Unmoved pawns may double-step.</li>
+          <li>Enemy pawns spawn only in the middle 4 squares of each edge.</li>
           <li>Faded piece = already acted this turn. ↻ = can Redeploy.</li>
           <li>Keys: Enter end turn · Z undo · Esc cancel</li>
         </ul>

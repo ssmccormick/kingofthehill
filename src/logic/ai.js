@@ -110,7 +110,7 @@ export function intentMove(state, intent) {
   return move;
 }
 
-// Live status for the UI during the player's turn.
+// Live status of one intent against the current board, ignoring the others.
 //   'dead'    the enemy was captured; its move is cancelled
 //   'invalid' will fall back to another move
 //   'hit'     will capture a player piece
@@ -120,6 +120,22 @@ export function intentStatus(state, intent) {
   const m = intentMove(state, intent);
   if (!m) return 'invalid';
   return m.capture ? 'hit' : 'move';
+}
+
+// Statuses for all intents, replaying the sequence in order on a scratch
+// board (so intent #2 sees the board after #1, exactly as the enemy turn will).
+export function intentStatuses(state) {
+  const sim = structuredClone(state);
+  return (state.intents || []).map((intent) => {
+    const status = intentStatus(sim, intent);
+    if (status === 'dead') return status;
+    const move = status === 'invalid' ? bestMoveFor(sim, sim.pieces[intent.pieceId])?.move : intentMove(sim, intent);
+    if (move) {
+      if (move.capture) removePiece(sim, move.capture);
+      relocatePiece(sim, move.pieceId, move.to);
+    }
+    return status;
+  });
 }
 
 function executeEnemyMove(state, move, note = '') {

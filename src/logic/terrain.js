@@ -100,6 +100,28 @@ export function inwardFacing(t, sq) {
   return OPPOSITE[d[0][0]];
 }
 
+// Edge squares an enemy of `type` may spawn on. Pawns are limited to the
+// middle `pawnLaneWidth` squares of each edge; other pieces may use any edge square.
+export function edgeSpawnSquares(t, spawnCfg, type) {
+  const W = t.width, H = t.height;
+  const out = [];
+  if (type === 'P') {
+    const lane = (len) => {
+      const w = Math.min(spawnCfg.pawnLaneWidth, len);
+      const a = Math.floor((len - w) / 2);
+      return Array.from({ length: w }, (_, i) => a + i);
+    };
+    for (const x of lane(W)) out.push(x, (H - 1) * W + x); // N and S edges
+    for (const y of lane(H)) out.push(y * W, y * W + W - 1); // W and E edges
+    return out;
+  }
+  for (let sq = 0; sq < W * H; sq++) {
+    const x = sq % W, y = Math.floor(sq / W);
+    if (x === 0 || y === 0 || x === W - 1 || y === H - 1) out.push(sq);
+  }
+  return out;
+}
+
 // Movement-cost distance from every square to `target`, moving one square at a
 // time (8 directions) and paying climb costs. Ignores pieces. Used by the AI.
 export function distanceField(t, cfg, target) {
