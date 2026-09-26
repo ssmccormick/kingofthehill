@@ -3,13 +3,12 @@
 A turn-based chess survival prototype. Defend your king on a hill in the middle
 of a 24×24 board while enemy pieces close in from the edges.
 
-**Status: Phase 2 of 5**:
+**Status: Phase 3 of 5**:
 - Phase 1: board, terrain, player army, legal move generation (range caps, hill
   bonus, ramps, climb costs), check rules, pawn promotion and redeploy.
 - Phase 2: action points, turn flow, undo, enemy AI with telegraphed intents and fallbacks.
-
-Enemies don't spawn on their own yet (that's phase 3). Use the dev panel to
-place them, or press **Spawn 8 random enemies**.
+- Phase 3: waves and trickle spawns with telegraphed markers, win/loss,
+  Campaign / Endless / Sandbox modes, scoring.
 
 ## Run it
 
@@ -41,6 +40,7 @@ src/logic/                   pure game logic with ZERO DOM access (runs in Node)
   moves.js                   move generation, attacks, check / checkmate
   promotion.js               pawn promotion table + deployment placement
   ai.js                      enemy move scoring, intent planning, enemy turn
+  spawn.js                   waves, trickle, spawn markers, wave clears, campaign win
   actions.js                 player actions: move, place, redeploy, end turn, AP
   debug.js                   dev-panel helpers (seeded random enemy spawn)
   game.js                    Game wrapper with the in-turn undo stack
@@ -49,7 +49,18 @@ tests/                       node:test unit tests
 DECISIONS.md                 how ambiguous rules were resolved
 ```
 
-## How to play (phase 2)
+## How to play (phase 3)
+
+- Pick a mode from the start menu:
+  - **Campaign**: survive 10 waves (adjustable), then clear the board.
+  - **Endless**: waves never stop and grow past wave 10. Play for score.
+  - **Sandbox**: no spawns, for setting up test positions.
+- A wave arrives every 8 turns, starting at the end of turn 1. Between waves,
+  one extra enemy arrives every 2 turns. Arrivals are marked on the edge one
+  turn ahead with a faded red piece in a dashed box. If you stand on a
+  marker, that enemy arrives elsewhere on the same edge.
+- Score is the value of the enemies you capture, plus 10 × the wave number for
+  each wave you wipe out completely.
 
 - Click one of your pieces to see its legal moves. Dots are moves and red rings are captures.
 - Each move costs 1 AP (4 per turn). Each piece moves at most once per turn.
@@ -75,6 +86,7 @@ DECISIONS.md                 how ambiguous rules were resolved
   - Place enemy or player pieces anywhere, erase pieces, or spawn 8 random
     enemies (seeded; pawns only in the middle 4 squares of each edge).
   - Turn the enemy AI on or off, and set enemies per turn. Both apply immediately.
-  - Change board, plateau, ramp, climb-cost and AP settings. These apply on
+  - Skip to next wave: its markers appear now, and it arrives when you end the turn.
+  - Change board, plateau, ramp, climb-cost, AP and wave-interval settings. These apply on
     restart and are remembered in localStorage.
   - "Refresh AP & moves" resets the current turn.

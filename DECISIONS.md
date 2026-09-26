@@ -117,3 +117,38 @@ configurable where it matters. Config keys are in `src/config.js`.
   line during the enemy's sequence.
 - **Dev panel:** turning the AI off clears the intents, and the enemy turn
   does nothing. Dev edits re-plan the intents immediately.
+
+## Spawning, modes & scoring (phase 3)
+- **Timing:** spawns are planned at the start of each player turn and shown
+  as edge markers, then placed at the end of that turn, after the enemy moves.
+  New enemies first act on the following turn, and their intents are shown
+  before that. Wave 1 is marked on turn 1 and arrives at the end of it
+  (`spawn.waves.firstWaveTurn`). Later waves come every
+  `spawn.waves.interval` (8) turns after the previous one.
+- **Composition:** `spawn.waves.table` lists each wave's pieces. The pieces
+  are spread round-robin over the four sides, starting from a random side.
+  Pawns only use the middle pawn lanes. If a wave has more pawns than there
+  are free lane squares, the extras are **carried over** and retried each turn.
+- **Trickle:** starting after wave 1, `trickle.count` (1) enemy arrives every
+  `trickle.interval` (2) turns since the last wave, on a random side. Its type
+  is picked from `trickle.weights`, heavily weighted toward pawns. In
+  Campaign, trickle stops once the final wave has spawned.
+- **Occupied markers:** enemies never spawn on an occupied square. If a
+  marked square is occupied at spawn time (a player piece standing there, or
+  an enemy that moved onto it), the enemy goes to another free spawn square,
+  on the same edge first. If there is none, it's carried to the next turn.
+- **Campaign win:** after the final wave (`modes.campaignWaves`, 10) has
+  spawned, you win once no enemies are left and nothing is marked or carried.
+  This includes leftovers from earlier waves and trickle. The check also
+  runs right after your captures, so you can win mid-turn.
+- **Endless:** waves past the table reuse its last row. The piece count grows
+  by `sizeGrowthPerWave` per extra wave, and each piece has a chance
+  (`upgradeChancePerWave` × extra waves, capped at `maxUpgradeChance`) of
+  being upgraded one tier (P→N→B→R→Q). The seeded RNG makes this reproducible.
+- **Score:** each enemy you capture adds its `pieceValues` value. A wave is
+  **destroyed** once none of its pieces are on the board, marked or carried.
+  That adds `scoring.waveClearBonus` × the wave number (wave 3 gives +30).
+  Trickle enemies aren't part of any wave. Enemies that die to other
+  causes don't score (for now, nothing else kills enemies).
+- **Sandbox** mode keeps the phase 1–2 behaviour: no spawns, no win.
+- **Upgrades (phase 4)** will be offered after each wave is destroyed, in both modes.

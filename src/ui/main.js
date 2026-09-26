@@ -9,6 +9,7 @@ import { promotionPieceFor } from '../logic/promotion.js';
 import { inwardFacing, OPPOSITE } from '../logic/terrain.js';
 import { randomSeed } from '../logic/rng.js';
 import { spawnRandomEnemies } from '../logic/debug.js';
+import { turnsUntilWave, totalWaves, skipToNextWave } from '../logic/spawn.js';
 import { render } from './render.js';
 
 const $ = (id) => document.getElementById(id);
@@ -26,11 +27,16 @@ function saveOverrides() {
   try { localStorage.setItem(DEV_KEY, JSON.stringify(overrides)); } catch { /* ignore */ }
 }
 
-function newGame(seed) {
-  game = new Game(mergeConfig(DEFAULT_CONFIG, overrides), seed);
-  const url = new URL(location.href);
-  url.searchParams.set('seed', game.state.seed);
-  history.replaceState(null, '', url);
+let mode = 'campaign';
+
+function newGame(seed, newMode = mode) {
+  mode = newMode;
+  game = new Game(mergeConfig(DEFAULT_CONFIG, overrides), seed, mode);
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set('seed', game.state.seed);
+    history.replaceState(null, '', url);
+  } catch { /* not allowed in some embedded frames */ }
   clearSelection();
   fitCell();
   refresh();
@@ -39,7 +45,8 @@ function newGame(seed) {
 function fitCell() {
   const t = game.state.terrain;
   const wrap = $('boardWrap');
-  const avail = Math.min((wrap.clientHeight - 24) / t.height, (wrap.clientWidth - 24) / t.width);
+  const h = wrap.clientHeight > 200 ? wrap.clientHeight : window.innerHeight;
+  const avail = Math.min((h - 24) / t.height, (wrap.clientWidth - 32) / t.width);
   view.cell = Math.max(16, Math.min(48, Math.floor(avail)));
 }
 
@@ -196,6 +203,7 @@ function fillDevPanel() {
   $('devRamp').value = c.board.ramps[0]?.width ?? 2;
   $('devClimb').value = c.terrain.climbExtraCost;
   $('devAP').value = c.turn.apPerTurn;
+  $('devWaveInt').value = c.spawn.waves.interval;
   $('devEPT').value = c.enemy.enemiesPerTurn;
   $('devAI').checked = c.enemy.aiEnabled;
   $('devRepeat').checked = !c.turn.onePieceMovePerTurn;
@@ -211,6 +219,7 @@ $('devApply').onclick = () => {
     },
     terrain: { climbExtraCost: n('devClimb') },
     turn: { apPerTurn: n('devAP'), onePieceMovePerTurn: !$('devRepeat').checked },
+    spawn: { waves: { interval: Math.max(1, n('devWaveInt')) } },
     enemy: { enemiesPerTurn: n('devEPT'), aiEnabled: $('devAI').checked },
   };
   saveOverrides();
@@ -238,6 +247,12 @@ $('devEPT').onchange = (e) => {
   refresh();
 };
 $('devSpawn').onclick = () => { game.debugEdit((st) => spawnRandomEnemies(st, 8)); refresh(); };
+$('devSkipWave').onclick = () => {
+  let ok = false;
+  game.debugEdit((st) => { ok = skipToNextWave(st); });
+  view.message = ok ? 'Next wave is now marked on the edges; it arrives when you end this turn.' : 'No waves left (or Sandbox mode).';
+  refresh();
+};
 $('devReplan').onclick = () => { game.debugEdit(() => {}); refresh(); };
 $('devClearEnemies').onclick = () => {
   game.debugEdit((st) => { for (const p of Object.values(st.pieces)) if (p.side === 'enemy') removePiece(st, p.id); });
@@ -263,15 +278,18 @@ function refresh() {
     threat: view.showThreat ? attackedSquares(s, 'enemy') : null,
     intents: view.showIntents ? intentView(s) : null,
     placement: s.pendingPlacement ? currentPlacementSquares(s) : null,
+    spawns: s.spawns.pending,
   });
 
   const inCheck = isInCheck(s);
   $('hud').innerHTML = [
     `<span class="ap">AP <b>${s.ap}</b></span>`,
     `<span>Turn <b>${s.turn}</b></span>`,
+    `<span>Mode <b>${MODE_NAMES[s.mode]}</b></span>`,
+    s.mode === 'sandbox' ? '' : `<span>Wave <b>${waveLabel(s)}</b></span>`,
+    s.mode === 'sandbox' ? '' : `<span>Next wave <b>${nextWaveLabel(s)}</b></span>`,
     `<span>Enemies <b>${Object.values(s.pieces).filter((p) => p.side === 'enemy').length}</b></span>`,
-    `<span>Wave <b>—</b></span>`,
-    `<span>Mode <b>Sandbox</b></span>`,
+    `<span class="score">Score <b>${s.score}</b></span>`,
     `<span>Seed <b>${s.seed}</b></span>`,
     inCheck ? '<span class="warn"><b>CHECK!</b></span>' : '',
   ].join('');
@@ -283,6 +301,7 @@ function refresh() {
   let bannerText = '';
   banner.classList.remove('danger');
   if (s.status === 'lost') { bannerText = `${s.lossReason || 'Game over.'} Restart or pick a new seed.`; banner.classList.add('danger'); }
+  else if (s.status === 'won') bannerText = `Victory! Score ${s.score}.`;
   else if (s.pendingPlacement) {
     const p = s.pieces[s.pendingPlacement.pieceId];
     bannerText = `Place your ${PIECE_NAMES[p.type]} on a highlighted deployment square${s.pendingPlacement.kind === 'redeploy' ? ' (Esc to cancel)' : ''}.`;
@@ -296,7 +315,60 @@ function refresh() {
   renderIntents();
   renderHover();
   renderLog();
+  renderEndScreen();
 }
+
+const MODE_NAMES = { campaign: 'Campaign', endless: 'Endless', sandbox: 'Sandbox' };
+
+function waveLabel(s) {
+  const total = totalWaves(s);
+  return Number.isFinite(total) ? `${s.spawns.wavesSpawned}/${total}` : String(s.spawns.wavesSpawned);
+}
+
+function nextWaveLabel(s) {
+  const n = turnsUntilWave(s);
+  if (n == null) return s.mode === 'campaign' ? 'none — clear the board' : '—';
+  if (n === 0) return 'end of this turn!';
+  return `in ${n} turn${n === 1 ? '' : 's'}`;
+}
+
+// ---------- start menu & end screen ----------
+let endShownFor = null;
+function renderEndScreen() {
+  const s = game.state;
+  const el = $('endScreen');
+  if (s.status === 'playing') { el.hidden = true; endShownFor = null; return; }
+  if (endShownFor === game) return; // shown once; the player may close it to inspect the board
+  endShownFor = game;
+  $('endTitle').textContent = s.status === 'won' ? 'Victory' : 'Defeat';
+  $('endText').textContent = s.status === 'won'
+    ? `You held the hill through all ${s.spawns.wavesSpawned} waves.`
+    : `${s.lossReason || 'The king has fallen.'} You reached wave ${s.spawns.wavesSpawned} on turn ${s.turn}.`;
+  const captured = s.captured.enemy.length;
+  $('endStats').innerHTML = `<div><b>${s.score}</b><span>score</span></div><div><b>${s.turn}</b><span>turns</span></div><div><b>${captured}</b><span>enemies taken</span></div><div><b>${s.captured.player.length}</b><span>pieces lost</span></div>`;
+  el.hidden = false;
+}
+
+function showMenu() {
+  $('menuWaves').value = mergeConfig(DEFAULT_CONFIG, overrides).modes.campaignWaves;
+  $('menuSeed').value = '';
+  $('menu').hidden = false;
+}
+function startFromMenu(m) {
+  const waves = Math.max(1, Number($('menuWaves').value) || 10);
+  overrides = { ...overrides, modes: { ...(overrides.modes || {}), campaignWaves: waves } };
+  saveOverrides();
+  const seedText = $('menuSeed').value.trim();
+  $('menu').hidden = true;
+  newGame(seedText || randomSeed(), m);
+}
+$('menuCampaign').onclick = () => startFromMenu('campaign');
+$('menuEndless').onclick = () => startFromMenu('endless');
+$('menuSandbox').onclick = () => startFromMenu('sandbox');
+$('btnMenu').onclick = showMenu;
+$('endAgain').onclick = () => { $('endScreen').hidden = true; newGame(randomSeed()); };
+$('endMenu').onclick = () => { $('endScreen').hidden = true; showMenu(); };
+$('endClose').onclick = () => { $('endScreen').hidden = true; };
 
 function renderSelection() {
   const s = game.state;
@@ -370,6 +442,8 @@ function renderHover() {
   const bits = [`${x},${y}`, `level ${t.elev[sq]}`];
   if (t.rampSide[sq]) bits.push(`ramp (${t.rampSide[sq]}) — free climb`);
   if (t.deploy[sq]) bits.push('deployment zone');
+  const spawn = s.spawns.pending.find((p) => p.sq === sq);
+  if (spawn) bits.push(`spawn: enemy ${PIECE_NAMES[spawn.type]}${spawn.wave ? ` (wave ${spawn.wave})` : ''} arrives at the end of this turn`);
   $('hoverInfo').textContent = bits.join(' · ');
 }
 
@@ -387,8 +461,10 @@ window.addEventListener('resize', () => refresh());
 
 // ---------- boot ----------
 fillDevPanel();
-const urlSeed = new URL(location.href).searchParams.get('seed');
-newGame(urlSeed != null && urlSeed !== '' ? urlSeed : DEFAULT_CONFIG.seed);
+let urlSeed = null;
+try { urlSeed = new URL(location.href).searchParams.get('seed'); } catch { /* ignore */ }
+newGame(urlSeed != null && urlSeed !== '' ? urlSeed : DEFAULT_CONFIG.seed, 'campaign');
+showMenu();
 
 // Exposed for console debugging.
 window.koth = { get game() { return game; }, refresh };

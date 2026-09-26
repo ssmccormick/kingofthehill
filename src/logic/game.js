@@ -2,10 +2,12 @@
 import { createGame } from './state.js';
 import * as A from './actions.js';
 import { planIntents } from './ai.js';
+import { planSpawns } from './spawn.js';
 
 export class Game {
-  constructor(config, seed) {
-    this.state = createGame(config, seed);
+  constructor(config, seed, mode = 'campaign') {
+    this.state = createGame(config, seed, mode);
+    planSpawns(this.state);
     planIntents(this.state);
     this.undoStack = [];
   }

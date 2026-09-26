@@ -47,10 +47,52 @@ export const DEFAULT_CONFIG = {
     pawnDoubleStep: true,
   },
 
+  modes: {
+    campaignWaves: 10, // Campaign: win once the final wave has spawned and the board is clear
+  },
+
   spawn: {
     // Enemy pawns spawn only on the middle N squares of each board edge, so
     // marching forward takes them toward the hill. Other pieces use any edge square.
     pawnLaneWidth: 4,
+    // Spawns are planned at the start of a player turn (shown as markers on
+    // the edge) and appear at the end of that turn's enemy phase.
+    waves: {
+      firstWaveTurn: 1, // wave 1 appears at the end of this turn
+      interval: 8, // turns between waves
+      // Composition per wave (piece type -> count). Spread across all four sides.
+      table: [
+        { P: 8 },
+        { P: 8, N: 2 },
+        { P: 8, N: 2, B: 2 },
+        { P: 10, N: 2, B: 2, R: 1 },
+        { P: 10, N: 3, B: 2, R: 2 },
+        { P: 12, N: 3, B: 3, R: 2 },
+        { P: 12, N: 3, B: 3, R: 2, Q: 1 },
+        { P: 14, N: 4, B: 3, R: 3, Q: 1 },
+        { P: 14, N: 4, B: 4, R: 3, Q: 2 },
+        { P: 16, N: 4, B: 4, R: 4, Q: 2 },
+      ],
+      // Endless mode, waves past the end of the table: the last row is scaled.
+      endless: {
+        sizeGrowthPerWave: 0.15, // counts x (1 + growth x wavesPastTable)
+        upgradeChancePerWave: 0.06, // chance each piece is upgraded one tier (P->N->B->R->Q)
+        maxUpgradeChance: 0.5,
+      },
+    },
+    // Between waves: `count` enemies every `interval` turns on a random edge.
+    trickle: {
+      enabled: true,
+      interval: 2,
+      count: 1,
+      weights: { P: 6, N: 2, B: 1, R: 1 },
+    },
+  },
+
+  scoring: {
+    // Score = sum of captured enemy piece values (pieceValues)
+    //       + waveClearBonus x wave number for each wave fully destroyed.
+    waveClearBonus: 10,
   },
 
   pieceValues: { P: 1, N: 3, B: 3, R: 5, Q: 9, K: 0 },

@@ -4,6 +4,7 @@ import { legalMoves, isInCheck, isCheckmate } from './moves.js';
 import { log, relocatePiece, removePiece, sqName, PIECE_NAMES } from './state.js';
 import { shouldPromote, promote, placementSquares } from './promotion.js';
 import { planIntents, runEnemyTurn } from './ai.js';
+import { planSpawns, executeSpawns, checkProgress } from './spawn.js';
 
 const fail = (error) => ({ ok: false, error });
 
@@ -41,6 +42,7 @@ export function movePiece(state, pieceId, toSq) {
     const victim = removePiece(state, move.capture);
     state.captured[victim.side].push(victim.type);
     text += ` captures ${PIECE_NAMES[victim.type]}`;
+    if (victim.side === 'enemy') state.score += state.config.pieceValues[victim.type] ?? 0;
     if (piece.type === 'P') piece.captures++;
   }
   relocatePiece(state, pieceId, toSq);
@@ -49,6 +51,7 @@ export function movePiece(state, pieceId, toSq) {
   log(state, text);
 
   if (shouldPromote(state, piece)) promote(state, piece);
+  checkProgress(state);
   replan(state);
   return { ok: true, move };
 }
@@ -103,15 +106,19 @@ export function endTurn(state) {
   log(state, `— End of turn ${state.turn} —`);
   runEnemyTurn(state);
   if (state.status !== 'playing') return { ok: true };
+  executeSpawns(state);
+  checkProgress(state);
+  if (state.status !== 'playing') return { ok: true };
   state.turn++;
   startPlayerTurn(state);
+  planSpawns(state);
   planIntents(state);
   return { ok: true };
 }
 
 // Enemies re-evaluate their telegraphed moves after each player action.
 function replan(state) {
-  if (state.config.enemy.replanAfterPlayerMove) planIntents(state);
+  if (state.config.enemy.replanAfterPlayerMove && state.status === 'playing') planIntents(state);
 }
 
 export function startPlayerTurn(state) {

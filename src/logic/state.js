@@ -12,7 +12,8 @@ export function sqName(state, sq) {
 export const PIECE_NAMES = { K: 'King', Q: 'Queen', R: 'Rook', B: 'Bishop', N: 'Knight', P: 'Pawn' };
 
 // Creates an empty game (terrain, no pieces). Use setupStartingArmy() for the default army.
-export function createEmptyState(config, seed = config.seed) {
+// mode: 'campaign' | 'endless' | 'sandbox' (sandbox = no spawns, no win).
+export function createEmptyState(config, seed = config.seed, mode = 'sandbox') {
   const s = seed == null ? randomSeed() : normalizeSeed(seed);
   const terrain = buildTerrain(config);
   return {
@@ -28,6 +29,18 @@ export function createEmptyState(config, seed = config.seed) {
     pendingPlacement: null, // { pieceId, apCost, kind: 'promotion'|'redeploy' }
     captured: { player: [], enemy: [] }, // types lost by each side
     mods: { extraAP: 0, extraHillRange: 0, knightsIgnoreClimb: false },
+    mode,
+    score: 0,
+    // Spawn schedule and telegraphed spawns (see spawn.js).
+    spawns: {
+      nextWaveTurn: config.spawn.waves.firstWaveTurn,
+      wavesSpawned: 0,
+      lastWaveTurn: null,
+      pending: [], // [{ sq, type, wave }] appearing at the end of this turn
+      pendingWave: null, // wave number the pending spawns belong to, if a wave
+      carry: [], // [{ type, wave }] that found no free square; retried next turn
+      open: [], // waves spawned but not yet destroyed
+    },
     intents: [], // telegraphed enemy moves for the coming enemy turn (see ai.js)
     log: [],
     status: 'playing', // 'playing' | 'lost'
@@ -35,10 +48,10 @@ export function createEmptyState(config, seed = config.seed) {
   };
 }
 
-export function createGame(config, seed) {
-  const state = createEmptyState(config, seed);
+export function createGame(config, seed, mode = 'campaign') {
+  const state = createEmptyState(config, seed, mode);
   setupStartingArmy(state);
-  log(state, `Game start — seed ${state.seed}`);
+  log(state, `${mode[0].toUpperCase()}${mode.slice(1)} start — seed ${state.seed}`);
   return state;
 }
 
@@ -53,6 +66,7 @@ export function addPiece(state, { type, side, sq, facing = null }) {
     movesThisTurn: 0,
     lockedThisTurn: false, // redeployed this turn
     canRedeploy: false, // promoted while the zone was full
+    wave: null, // enemy wave number (null for trickle / hand-placed)
   };
   state.grid[sq] = id;
   return state.pieces[id];

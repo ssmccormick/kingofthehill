@@ -21,3 +21,10 @@ export function put(state, type, side, x, y, facing = null) {
 export const sq = (state, x, y) => y * state.terrain.width + x;
 export const xy = (state, s) => [s % state.terrain.width, Math.floor(s / state.terrain.width)];
 export const targets = (state, moves) => moves.map((m) => xy(state, m.to).join(',')).sort();
+
+// Empty board in a given mode ('campaign' | 'endless' | 'sandbox'), AI off by default
+// so spawn schedules can be tested without enemies moving.
+export function modeState(mode, overrides = {}) {
+  const c = cfg({ enemy: { aiEnabled: false }, ...overrides });
+  return createEmptyState(c, 1, mode);
+}

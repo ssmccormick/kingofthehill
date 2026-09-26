@@ -122,6 +122,16 @@ export function edgeSpawnSquares(t, spawnCfg, type) {
   return out;
 }
 
+// Which board edge a square is on ('N'|'S'|'W'|'E'), or null. Corners report N/S.
+export function edgeSide(t, sq) {
+  const x = sq % t.width, y = Math.floor(sq / t.width);
+  if (y === 0) return 'N';
+  if (y === t.height - 1) return 'S';
+  if (x === 0) return 'W';
+  if (x === t.width - 1) return 'E';
+  return null;
+}
+
 // Movement-cost distance from every square to `target`, moving one square at a
 // time (8 directions) and paying climb costs. Ignores pieces. Used by the AI.
 export function distanceField(t, cfg, target) {

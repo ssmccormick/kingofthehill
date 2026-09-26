@@ -21,6 +21,7 @@
         <button id="btnUndo" title="Z / Ctrl+Z">Undo</button>
         <button id="btnRestart" title="Same seed">Restart</button>
         <button id="btnNewSeed">New Seed</button>
+        <button id="btnMenu">Menu</button>
       </div>
       <div class="buttons small">
         <button id="btnZoomOut">−</button>
@@ -49,6 +50,7 @@
           <label>Climb extra cost <input type="number" id="devClimb" min="0" max="3"></label>
           <label>AP / turn <input type="number" id="devAP" min="1" max="12"></label>
           <label>Enemies / turn <input type="number" id="devEPT" min="0" max="20"></label>
+          <label>Wave interval <input type="number" id="devWaveInt" min="1" max="30"></label>
           <label class="wide"><input type="checkbox" id="devRepeat"> Allow repeat moves by one piece</label>
         </div>
         <button id="devApply">Apply &amp; restart</button>
@@ -82,6 +84,7 @@
           </select>
         </label>
         <label><input type="checkbox" id="devAI"> Enemy AI enabled (off = enemies never move)</label>
+        <button id="devSkipWave">Skip to next wave</button>
         <button id="devSpawn">Spawn 8 random enemies</button>
         <button id="devReplan">Re-plan intents</button>
         <button id="devClearEnemies">Clear enemies</button>
@@ -97,6 +100,7 @@
           <li>Enemy intents: numbered arrows in execution order. Red = capture, orange = move, grey dashed = blocked by an earlier enemy move in the sequence (that enemy picks another move). Purple + = gives check, black # = checkmate.</li>
           <li>Pawn badge = captures; small tick = facing. Hover a pawn to see its promotion. Unmoved pawns may double-step.</li>
           <li>Enemy pawns spawn only in the middle 4 squares of each edge.</li>
+          <li><b>Faded red pieces with a dashed box</b> on the edge = enemies arriving at the end of this turn. Standing on a marker pushes that spawn elsewhere on the same edge.</li>
           <li>Faded piece = already acted this turn. ↻ = can Redeploy.</li>
           <li>Keys: Enter end turn · Z undo · Esc cancel</li>
         </ul>
@@ -104,6 +108,40 @@
     </aside>
   </main>
   <div id="tooltip" hidden></div>
+  <div id="menu" class="overlay" hidden>
+    <div class="card">
+      <h1>King of the Hill</h1>
+      <p>Hold the hill. Enemies march in from every edge; their next moves are shown as arrows. Keep your king out of checkmate.</p>
+      <div class="modes">
+        <button id="menuCampaign" class="mode">
+          <b>Campaign</b>
+          <span>Survive <input type="number" id="menuWaves" min="1" max="50" onclick="event.stopPropagation()"> waves, then clear the board.</span>
+        </button>
+        <button id="menuEndless" class="mode">
+          <b>Endless</b>
+          <span>Waves keep coming and keep growing. Play for score.</span>
+        </button>
+        <button id="menuSandbox" class="mode">
+          <b>Sandbox</b>
+          <span>No spawns. Set up positions with the dev panel.</span>
+        </button>
+      </div>
+      <label class="seed">Seed (optional) <input type="text" id="menuSeed" placeholder="random"></label>
+      <p class="muted">Score = value of enemies you capture (pawn 1, knight/bishop 3, rook 5, queen 9) + 10 × wave number for each wave you wipe out.</p>
+    </div>
+  </div>
+  <div id="endScreen" class="overlay" hidden>
+    <div class="card">
+      <h1 id="endTitle"></h1>
+      <p id="endText"></p>
+      <div id="endStats" class="stats"></div>
+      <div class="buttons">
+        <button id="endAgain">Play again (new seed)</button>
+        <button id="endMenu">Menu</button>
+        <button id="endClose">Look at the board</button>
+      </div>
+    </div>
+  </div>
   <script type="module" src="src/ui/main.js"></script>
 </body>
 </html>

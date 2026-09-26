@@ -110,6 +110,9 @@ export function render(canvas, state, view) {
   const pendingId = state.pendingPlacement?.pieceId;
   for (const p of Object.values(state.pieces)) drawPiece(ctx, state, p, c, W, p.id === pendingId);
 
+  // 6b. Spawn markers: ghost of the arriving enemy inside a dashed box
+  for (const sp of view.spawns || []) drawSpawnMarker(ctx, sp, c, W, !!state.grid[sp.sq]);
+
   // 7. Move markers on top of pieces so captures read clearly
   for (const m of view.moves || []) {
     const x = m.to % W, y = Math.floor(m.to / W);
@@ -136,6 +139,25 @@ export function render(canvas, state, view) {
     ctx.lineWidth = 1;
     ctx.strokeRect((view.hoverSq % W) * c + 0.5, Math.floor(view.hoverSq / W) * c + 0.5, c - 1, c - 1);
   }
+}
+
+function drawSpawnMarker(ctx, sp, c, W, occupied) {
+  const x = sp.sq % W, y = Math.floor(sp.sq / W);
+  ctx.save();
+  ctx.strokeStyle = COLORS.enemy.fill;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 3]);
+  ctx.strokeRect(x * c + 2, y * c + 2, c - 4, c - 4);
+  ctx.setLineDash([]);
+  if (!occupied) {
+    ctx.globalAlpha = 0.38;
+    ctx.font = `${Math.round(c * 0.72)}px "Segoe UI Symbol","Noto Sans Symbols 2","DejaVu Sans",serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = COLORS.enemy.fill;
+    ctx.fillText(GLYPHS[sp.type] + VS15, (x + 0.5) * c, (y + 0.54) * c);
+  }
+  ctx.restore();
 }
 
 function drawEdge(ctx, kind, x1, y1, x2, y2, stepW) {
